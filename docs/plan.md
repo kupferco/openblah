@@ -15,6 +15,8 @@ Status tags used on every item:
 - **Decided**: Vision is a "walking meeting room": phone in pocket, the room with the AI always available, others can be invited mid-conversation (e.g. his mother switches from WhatsApp and joins).
 - **Decided**: MVP is voice only. No video or images.
 - **Decided**: Native app is the main experience (phone and watch). A browser link (no install) is the accessibility path for guests.
+- **Decided**: The agent is optional per room. People can use OpenBlah just to talk to each other, and bring the agent in or out at any time (section 2.6).
+- **Decided**: OpenBlah is also a voice client for MCP tools. Claude's voice mode works well with MCP connectors, but ChatGPT and Gemini don't. People on those assistants, or none, can talk to their MCP tools by voice through OpenBlah. Products (TeraPay, Housekeeper, OpenPocket) can embed it to give users voice access to the product's MCP tools without a ChatGPT/Claude/Gemini account (section 4).
 
 ## 2. Architecture
 
@@ -69,6 +71,14 @@ This is the product's core. Default is silent.
 - **Recommended**: Addressing is by name plus context: if Dani says "Blah, what do you think?" the agent answers; if he says "Penelope, what do you think?" it stays quiet. Eye-contact style cues don't exist, so name use is the main signal; the classifier uses recent turns.
 - **Recommended**: Visible state on every client (listening / thinking / speaking / muted) so people trust it. A "mute the agent" control for everyone.
 
+### 2.6 Group calls and the optional agent
+
+- **Decided**: 2–3+ people can talk in one room with the AI agent in the middle if they want. The agent is optional per room: a room can be a plain voice call between people, and the agent can be brought in or sent out at any time.
+- **Recommended**: A room has an `agent` state: `off` (plain call), `on` (agent present, in Listening/Facilitating/Direct mode). Any app user in the room can request the agent ("Blah, join" by button; by voice only when the agent is already present). Host approves by default, so a guest cannot silently bring an AI into a call.
+- **Recommended**: Agent worker is dispatched only when the state flips to `on`, and leaves when it flips to `off`. In `off` state no audio goes to STT/LLM/TTS, so a plain call costs only LiveKit minutes and no AI processing happens. Consent (section 7) is asked when the agent first joins, not only at room start, so people who joined an AI-free room agree before it starts listening.
+- **Recommended**: Rooms are created with `agent: on | off | ask` by the host app; default `ask` (agent off until someone invites it).
+- **Recommended**: Group size target: 2–4 humans in the MVP; "3+" beyond that is not tuned. **Verify** LiveKit limits per room on the free plan.
+
 ## 3. Identity and invites
 
 - **Recommended**: Two participant types:
@@ -93,7 +103,25 @@ This is the product's core. Default is silent.
   2. **Webhook tools**: simple JSON-schema tool definitions with a callback URL, for apps that don't run MCP.
 - **Recommended**: Tool safety: read-only tools (search, lookup) run freely. Tools that change anything (book, send, pay) require spoken or tapped confirmation from the host before running, with the agent reading back what it will do ("Book a table for four at 19:30 at X, OK?"). In a group, confirmation comes from the owner of the tool credentials, not any participant.
 - **Recommended**: Agent built-ins: notes, summary, action list, web search (via a search tool/MCP), and the invite command.
-- **Decided**: Housekeeper's current mic button is a bad voice experience; replacing it is the first real use case. **Recommended**: Do it as the first integration (chunk 8), since it is single-user and low risk, before the group features are polished.
+### 4.1 OpenBlah as a voice client for MCP tools
+
+- **Decided**: Purpose: let people talk by voice to MCP tools without depending on Claude's voice mode. Two audiences: (a) end users with ChatGPT, Gemini or no assistant, who use OpenBlah directly and connect their own MCP servers; (b) products that embed OpenBlah so their users get voice access to the product's MCP tools without any ChatGPT/Claude/Gemini account.
+- **Recommended**: Two ways to use it, same server and agent:
+  1. **Standalone**: user opens the OpenBlah app, adds MCP servers (URL), signs in to each, and talks. Works alone (1:1 Direct mode) or in a group room.
+  2. **Embedded**: the host product registers its own MCP server(s) for its users. Users never see "MCP"; they tap the mic in the product.
+- **Recommended**: **Connecting MCP servers.** The agent worker acts as an MCP client over Streamable HTTP (SSE fallback). Server list is per room, resolved from: host-defined servers (embedded case) plus the user's saved servers (standalone case). stdio servers are not supported (a hosted server cannot spawn local processes). **Verify** current MCP spec for transport and auth.
+- **Recommended**: **Per-user auth.** Follow the MCP authorization spec (OAuth 2.1 with PKCE, dynamic client registration where the server supports it). Flow: the user taps "Connect" in the app, a browser or in-app sheet runs the server's OAuth consent, OpenBlah server stores the tokens encrypted (per user, per MCP server), refreshes them, and the agent calls tools with that user's token. Voice never carries credentials. Embedded case alternatives: (a) the host passes a short-lived user token when minting the room token (the product's own MCP server trusts it, no OAuth screen); (b) full OAuth. Option (a) is the simplest for Dani's own products. **Verify** the current MCP auth spec and which popular MCP servers support dynamic registration.
+- **Recommended**: In a group room, a tool call runs with the credentials of the person who owns the connection and only when that person asked or confirmed. Other participants cannot use someone else's tools (extends the safety rule above).
+- **Recommended**: **Which LLM powers the agent.** Model-agnostic design: one small `LlmProvider` interface (streaming chat with tool calls, token usage, cancel), with adapters for Claude, OpenAI and Gemini, selected per room by config. The agent's tool loop, "should I speak?" classifier and notes all use that interface, never a vendor SDK directly. MCP tool schemas are converted to each vendor's function-calling format in the adapter. STT and TTS are separate provider interfaces too. Default stays Claude. **Verify** tool-call latency and streaming-tool support of each vendor's current models; tool-calling quality in voice varies, so keep a small eval set (spoken requests → expected tool calls) and run it on every adapter.
+- **Recommended**: **Who pays.** Three key modes, set per host app and per room:
+  1. **Product key** (embedded default): the host product's LLM/STT/TTS keys, set in its OpenBlah server config. The product pays and may pass the cost on. Needs per-user minute caps (chunk 17).
+  2. **Bring your own key (BYOK)** (standalone default): the user pastes their own Claude/OpenAI/Gemini key, stored encrypted server-side, used only for their rooms. Simple and keeps Dani from paying for strangers. STT/TTS are then also billed to the user, or fall back to a free/small default.
+  3. **Self-hosted**: whoever runs the OpenBlah server pays their own providers directly (that is mode 1 for them).
+  In a group room, the host's key pays for the room by default. LiveKit minutes are separate (the OpenBlah server's LiveKit project). **Open**: does Dani offer a hosted OpenBlah service with his keys at all? (Open question 17.)
+- **Recommended**: Voice-first tool behaviour: tool results are summarised for speech, not read out verbatim; long results go to the screen/notes; tool names are never spoken. Slow tools get a short spoken hold ("one moment") and a visible state.
+- **Recommended**: Tool discovery for large MCP servers: expose a filtered subset per room (allow-list by host) to keep prompts short and latency low.
+
+- **Decided**: Housekeeper's current mic button is a bad voice experience; replacing it is the first real use case. **Recommended**: Do it as the first integration (chunk 13), since it is single-user and low risk, before the group features are polished.
 
 ## 5. Native apps and watch
 
@@ -101,11 +129,14 @@ This is the product's core. Default is silent.
 - **Recommended**: MVP client is an Expo dev-build reference app (iOS first) that exercises the package; it doubles as the demo.
 - **Recommended**: Background audio and "phone in pocket": enable iOS background audio mode and the audio session category `playAndRecord` so the call survives screen lock. Bluetooth/AirPods as the normal route.
 - **Verify**: iOS behaviour for mic access in background with LiveKit's RN SDK, and CallKit integration needs (CallKit makes it feel like a call and keeps the session alive, but adds complexity).
+- **Decided**: Watches: Apple Watch first, and ideally other watches too (Wear OS / Android watches). Plan for both.
+- **Recommended**: Which is MVP: neither watch is in the phone MVP. Apple Watch is the first watch target (chunks 14–15, right after the phone MVP). Wear OS is planned second (chunk 16) and reuses the same design: the watch is a thin audio client; all logic stays on server and phone.
 - **Decided**: Apple Watch: complication (raise wrist, tap, talk). Dani has a regular Apple Watch, not an Ultra (no Action Button).
 - **Verify**: Whether LiveKit's Swift SDK works on watchOS. If not:
 - **Recommended fallback**: the watch records and plays audio itself and talks to the iPhone over WatchConnectivity (phone relays into LiveKit), or streams audio straight to the OpenBlah server over WebSocket, which bridges into the room as a participant. Phone relay is simpler for the first try; direct-to-server is needed for a watch without the phone nearby (cellular model).
-- **Recommended**: Watch work comes after the phone MVP works. It is a spike first (chunk 11), no commitment.
-- **Decided**: Android watches later.
+- **Recommended**: Watch work comes after the phone MVP works. It is a spike first (chunk 14), no commitment.
+- **Decided**: Android watches (Wear OS) later, after Apple Watch. **Recommended** design: a Wear OS app with a tile and complication (tap to talk), audio relayed through the paired phone (Wearable Data Layer) as first try, direct to the server over Wi‑Fi/LTE as the cellular case. **Verify** whether LiveKit's Android SDK runs on Wear OS (it is Android, so likely, but mic/audio routing and battery need checking). Samsung/Pixel watches both run Wear OS, so one app covers them; other Android-like watches (e.g. non-Wear brands) are out of scope.
+- **Recommended**: Shared watch design for both platforms so the work is done once: a tiny protocol "start session / stop / mute / agent state / transcript line", carried over the phone relay or a WebSocket to the OpenBlah server.
 - **Verify**: Whether a watchOS complication can launch directly into an active audio capture (watchOS limits background microphone use; the tap opens the app in the foreground). Check Apple's current rules.
 
 ## 6. Costs and free-tier limits
@@ -113,6 +144,7 @@ This is the product's core. Default is silent.
 All numbers are to be checked on the live pricing pages before launch.
 
 - **Verify**: LiveKit Cloud free ("Build") plan: monthly allowance of WebRTC participant minutes, concurrent participant limit, bandwidth, and agent session minutes. My memory is that it covers a modest number of minutes per month and a small number of concurrent connections; confirm exact figures and whether hosting the agent worker on LiveKit Cloud is included or the worker must be self-hosted.
+- **Recommended**: A plain call with the agent off (section 2.6) costs only LiveKit minutes; AI cost starts when the agent joins. With BYOK or product keys (section 4.1) the AI cost lands on the key owner, not on OpenBlah.
 - **Recommended**: Per-minute cost model, to put into the README:
   `cost/min ≈ LiveKit participant-minutes (humans + agent) + STT (per audio minute, per human track) + TTS (per character spoken) + LLM (tokens in/out)`.
   Note STT is billed per human track, so a 4-person call costs about 4x the STT of a 1:1 call even if only one person talks. Mitigation: only send audio to STT when VAD detects speech.
@@ -145,9 +177,11 @@ All numbers are to be checked on the live pricing pages before launch.
   - Agent with Listening / Direct modes, addressed by name, interruption handling, "should I speak?" classifier.
   - Notes and a post-call summary.
   - Consent screen and visible agent state.
-  - One real tool path: MCP (read-only search plus one confirmed action).
+  - One real tool path: MCP (read-only search plus one confirmed action), one OAuth-connected server, one embedded server with a host-passed token.
+  - Agent optional per room: plain call, bring the agent in and out.
+  - Product-key mode and one LLM adapter (Claude) behind the interface; the OpenAI adapter as proof of the interface (Gemini after).
   - Housekeeper integration replacing the mic button.
-- **Recommended**: Not in the MVP: Facilitating mode tuning, watch app, Android, video, images, recordings, persistent standing rooms, push notifications for incoming calls, phone-number dialling, multiple languages, billing.
+- **Recommended**: Not in the MVP: Facilitating mode tuning, watch apps (Apple Watch first, then Wear OS), Android phone app, Gemini adapter, BYOK UI, video, images, recordings, persistent standing rooms, push notifications for incoming calls, phone-number dialling, multiple languages, billing.
 - **Recommended**: Success test for the MVP: Dani and Penelope have a 10-minute call with the agent in the room, the agent stays silent while they talk to each other, answers when asked, and produces correct notes.
 
 ## 9. Apple developer account
@@ -167,16 +201,20 @@ Each is sized as one Viber task (a few hours of coding session, one PR, testable
 5. **Spike: multi-participant agent**: per-participant STT streams, speaker-tagged transcript, "should I speak?" classifier. Offline-testable with recorded audio fixtures. Answers the main Verify in 2.3.
 6. **Group behaviour**: Listening / Facilitating / Direct modes, name addressing, mute-agent control, notes and summary generated at the end.
 7. **Invites and consent**: invite tokens, expiry and revoke, consent screen and agent announcement, guest rights, host controls.
-8. **Tools**: MCP client in the agent, webhook tools, confirmation flow for write actions, action log.
-9. **React Native / Expo package and reference app**: `@openblah/react-native`, dev-build demo, background audio, Bluetooth routing. Needs the iOS device build (owner step).
-10. **Housekeeper integration**: replace the mic button using the RN package; collect feedback. Separate PR in the Housekeeper repo; this repo gets an integration guide.
-11. **Watch spike**: test LiveKit Swift SDK on watchOS; if it fails, prototype the phone-relay fallback; document findings. Owner step: Xcode and device.
-12. **Watch complication MVP**: raise-wrist, tap, talk on top of the spike result.
-13. **Privacy and cost controls**: retention settings, delete, usage log, per-room and per-host caps, README processors list.
-14. **Docs and release**: README quickstart, host integration guide, npm publish, demo video script, licence check.
-15. **Later**: OpenPocket and Tera/TeraPay integrations, Android watch, standing rooms, push-based calling.
+8. **Tools (MCP)**: MCP client in the agent (Streamable HTTP), webhook tools, host-passed user token, confirmation flow for write actions, action log.
+9. **MCP OAuth and key modes**: per-user OAuth connect flow, encrypted token store, refresh; product-key and BYOK key storage; per-room server allow-list. Needs a test MCP server with OAuth (owner step: pick one).
+10. **Model-agnostic providers**: `LlmProvider` interface hardened, OpenAI and Gemini adapters, STT/TTS interface check, tool-call eval set run on each adapter.
+11. **Optional agent per room**: `off/on/ask` state, bring-in and send-out of the agent, host approval, late consent when the agent joins.
+12. **React Native / Expo package and reference app**: `@openblah/react-native`, dev-build demo, background audio, Bluetooth routing. Needs the iOS device build (owner step).
+13. **Housekeeper integration**: replace the mic button using the RN package and Housekeeper's MCP tools (first embedded case); collect feedback. Separate PR in the Housekeeper repo; this repo gets an integration guide.
+14. **Apple Watch spike**: test LiveKit Swift SDK on watchOS; if it fails, prototype the phone-relay fallback; document findings. Owner step: Xcode and device.
+15. **Apple Watch complication MVP**: raise-wrist, tap, talk on top of the spike result.
+16. **Wear OS spike and app**: LiveKit Android SDK on Wear OS, tile/complication, phone relay. Owner step: a Wear OS device or emulator.
+17. **Privacy and cost controls**: retention settings, delete, usage log, per-room, per-user and per-host caps, README processors list.
+18. **Docs and release**: README quickstart, host integration guide (embedding with MCP tools), npm publish, demo video script, licence check.
+19. **Later**: TeraPay and OpenPocket integrations, standing rooms, push-based calling, hosted service.
 
-Chunks 1–4 give a working 1:1 voice agent early; chunk 5 de-risks the group feature before more is built on it.
+Chunks 1–4 give a working 1:1 voice agent early; chunk 5 de-risks the group feature before more is built on it; chunks 8–10 deliver the MCP voice-client use case.
 
 ## 11. Risks
 
@@ -184,6 +222,8 @@ Chunks 1–4 give a working 1:1 voice agent early; chunk 5 de-risks the group fe
 - **Recommended**: Provider platforms may add the same feature soon; that is accepted by the brief. Keep the work small and swap-friendly.
 - **Verify**: watchOS support and background mic limits (section 5).
 - **Recommended**: Per-minute cost with many participants (section 6).
+- **Recommended**: MCP voice quality: models differ in tool-calling reliability and latency; mitigate with the eval set (chunk 10). OAuth with arbitrary third-party MCP servers may be fiddly; start with servers Dani controls.
+- **Recommended**: Storing users' OAuth tokens and API keys makes OpenBlah a sensitive service: encrypt at rest, minimal scopes, easy disconnect/delete.
 
 ## Open questions
 
@@ -201,3 +241,10 @@ Chunks 1–4 give a working 1:1 voice agent early; chunk 5 de-risks the group fe
 12. Which action should be the first booking tool: restaurant, tickets, or something else?
 13. For the watch, should it work without the phone nearby, or is phone-in-pocket enough?
 14. What monthly spend on provider fees are you comfortable with while testing?
+15. For Apple Watch first, is a Wear OS watch available for you to test on later?
+16. Should the first embedded product be Housekeeper, TeraPay or OpenPocket, and do they already have an MCP server?
+17. Will you run a hosted OpenBlah with your own keys, or only bring-your-own-key and self-hosting?
+18. When a product embeds OpenBlah, should the product pay for the AI, or should users pay with their own key?
+19. Should a guest be able to bring the agent into a room, or only the host?
+20. Which two LLMs besides Claude matter first: OpenAI, Gemini, or both?
+21. For MCP sign-in, is passing the product's own user token enough for your apps, or do you also want full OAuth for other people's servers?
