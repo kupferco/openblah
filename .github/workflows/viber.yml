@@ -178,6 +178,19 @@ jobs:
             When done, write to ${{ runner.temp }}/viber-pr.md: for a new task, a pull request
             description (what changed, how to check it, anything left open); for a follow-up, a short
             note of what this round changed.
+            If the change is to something that runs in a browser, end your final message with a line
+            "Viber-Preview-Path: /route" naming the route or screen that changed (path only, like
+            /settings/billing), so the preview opens right there and not on the home page. Leave it out
+            when nothing has a route.
+            If your final answer has something the person must do or know (hard refresh, a thing to check
+            in the preview, something untested, an open question), add one line per item,
+            "Viber-Todo: <short plain sentence>", at the end. Viber shows it at the top of the task.
+            If the person has to do something outside the browser (run a script on a device, a manual
+            setup, a spike), add lines, in order, "Viber-Step: <one short instruction>", with every
+            command in `backticks` (for example "Viber-Step: On your Pi, run `git checkout feat/x`").
+            Take them from your work and the README. Also add one line
+            "Viber-Safe: <plain sentence>" saying whether merging is safe (for example "Spike only,
+            doesn't touch the app, safe to merge.").
           claude_args: >-
             --settings "${{ runner.temp }}/viber-progress/settings.json"
             --allowedTools "Bash,Read,Write,Edit,MultiEdit,Glob,Grep,TodoWrite${{ inputs.web_tools != 'false' && ',WebFetch,WebSearch' || '' }}"
