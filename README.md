@@ -50,6 +50,10 @@ pnpm format      # fix formatting
 
 Copy `.env.example` to `.env` for the variables later tasks will use. CI runs the same four checks on pull requests.
 
+## Server
+
+`packages/server` runs with `pnpm --filter @openblah/server dev` (needs a `.env`, see `.env.example`). Endpoints and Cloud Run deploy steps are in [docs/deploy.md](docs/deploy.md).
+
 ## Licence
 
 Open source under the [MIT licence](LICENSE).

@@ -1,4 +1,8 @@
-/** Placeholder so the package builds and tests; replaced by real code in later tasks. */
-export function serverName(): string {
-  return "@openblah/server";
-}
+export { createApp, roomMetadataJson } from "./app.js";
+export type { AppDeps } from "./app.js";
+export { createAppFromEnv } from "./config.js";
+export { apiKeyAuth, isValidApiKey, parseApiKeys } from "./auth.js";
+export { MemoryStorage } from "./storage.js";
+export { FirestoreStorage } from "./firestore.js";
+export { RealLiveKit } from "./livekit.js";
+export type { AgentMode, LiveKitGateway, Room, Storage, TokenRequest } from "./types.js";
