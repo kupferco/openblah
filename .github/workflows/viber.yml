@@ -9,20 +9,8 @@ on:
       title: { description: Short feature name, required: true, type: string }
       branch: { description: feat/ branch to create, required: true, type: string }
       brief: { description: The agreed brief, required: true, type: string }
-      base:
-        {
-          description: Branch to start from instead of the default branch,
-          required: false,
-          default: "",
-          type: string,
-        }
-      web_tools:
-        {
-          description: Let the session search and fetch web pages,
-          required: false,
-          default: "true",
-          type: string,
-        }
+      base: { description: Branch to start from instead of the default branch, required: false, default: '', type: string }
+      web_tools: { description: Let the session search and fetch web pages, required: false, default: 'true', type: string }
 
 permissions:
   contents: write
