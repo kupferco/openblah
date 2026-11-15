@@ -21,11 +21,19 @@ export function createAppFromEnv(env: Env = process.env) {
     url: required(env, "LIVEKIT_URL"),
     apiKey: required(env, "LIVEKIT_API_KEY"),
     apiSecret: required(env, "LIVEKIT_API_SECRET"),
+    ...(env.OPENBLAH_AGENT_WORKER_NAME ? { agentWorkerName: env.OPENBLAH_AGENT_WORKER_NAME } : {}),
   });
   const kind = env.OPENBLAH_STORAGE ?? "memory";
   let storage: Storage;
   if (kind === "firestore") storage = new FirestoreStorage();
   else if (kind === "memory") storage = new MemoryStorage();
   else throw new Error(`OPENBLAH_STORAGE must be "memory" or "firestore", got "${kind}"`);
-  return createApp({ storage, livekit, apiKeys });
+  return createApp({
+    storage,
+    livekit,
+    apiKeys,
+    livekitUrl: env.LIVEKIT_URL,
+    ...(env.OPENBLAH_INVITE_BASE_URL ? { inviteBaseUrl: env.OPENBLAH_INVITE_BASE_URL } : {}),
+    ...(env.OPENBLAH_AGENT_NAME ? { agentName: env.OPENBLAH_AGENT_NAME } : {}),
+  });
 }
