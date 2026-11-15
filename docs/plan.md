@@ -146,7 +146,7 @@ This is the product's core. Default is silent.
   2. **Bring your own key (BYOK)** (standalone): **Decided**: users bring their own key, stored encrypted server-side and used only for their rooms. A free Gemini key is easy to get and is the suggested first step in onboarding.
   3. **Trial on OpenBlah's key**: **Decided**: OpenBlah's hosted key is only for demos and trials. A new user gets about a 5-minute trial conversation, then adds their own key. **Recommended**: enforce server-side by seconds of agent audio, tied to the account (see Open question 2), counted against the £50 testing budget (section 6).
   4. **Self-hosted**: whoever runs the OpenBlah server pays their own providers directly (same as mode 1 for them).
-  In a group room, the host's key pays by default. LiveKit minutes are separate (the OpenBlah server's LiveKit project).
+     In a group room, the host's key pays by default. LiveKit minutes are separate (the OpenBlah server's LiveKit project).
 - **Decided**: Free-tier Gemini data may be used by Google (including for training). Private data (e.g. TeraPay patients) must use paid tiers, never the free key. **Recommended**: embedded products flag a room `sensitive`; the server then refuses keys marked free-tier and shows the data terms. See Open question 5.
 - **Recommended**: Voice-first tool behaviour: tool results are summarised for speech, not read out verbatim; long results go to the screen/notes; tool names are never spoken. Slow tools get a short spoken hold ("one moment") and a visible state.
 - **Recommended**: Tool discovery for large MCP servers: expose a filtered subset per room (allow-list by host) to keep prompts short and latency low.

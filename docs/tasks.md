@@ -49,14 +49,14 @@ Parallel groups, once their dependencies are live:
 
 Only unanswered questions from the plan. Each affected task names its assumed default so it can proceed; if Dani answers differently, adjust the later task briefs or send a follow-up.
 
-| # | Plan question | Affects | Assumed default |
-|---|---|---|---|
-| Q1 | Agent name | T9, T11, T24 (and wake word, which is Roadmap) | Configurable `agentName`, per room, default "Blah". Used in addressing, consent text and announcements; never hard-coded. |
-| Q2 | 5-minute trial: sign-in required? one per account/device? | T14, T24 | Sign-in required. One trial of 300 s of agent audio per account, plus a best-effort per-device limit and a global cap. |
-| Q3 | How guests open history after the call | T19, T29 | The invite link stays valid for read-only history for 30 days (no sign-up). Easy to change to "guests must sign up" because it is one policy function. |
-| Q4 | Default history retention | T19 | 30 days, host-configurable (30 days / 1 year / until deleted), host can delete any time. |
-| Q5 | TeraPay: is a paid tier enough or is a signed DPA needed? | T14 (sensitive rooms) and the unscheduled TeraPay integration | `sensitive` rooms refuse free-tier keys and require the key owner to confirm "paid tier, no training". No DPA enforcement in code. The TeraPay integration is not scheduled until answered. |
-| Q6 | Standalone app sign-in method | T14, T24, T26 | Firebase Auth (fits GCP and Firebase Hosting) with email link and Google. Sign in with Apple is added in T26, since the App Store requires it when other third-party sign-in is offered. |
+| #   | Plan question                                             | Affects                                                       | Assumed default                                                                                                                                                                             |
+| --- | --------------------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Q1  | Agent name                                                | T9, T11, T24 (and wake word, which is Roadmap)                | Configurable `agentName`, per room, default "Blah". Used in addressing, consent text and announcements; never hard-coded.                                                                   |
+| Q2  | 5-minute trial: sign-in required? one per account/device? | T14, T24                                                      | Sign-in required. One trial of 300 s of agent audio per account, plus a best-effort per-device limit and a global cap.                                                                      |
+| Q3  | How guests open history after the call                    | T19, T29                                                      | The invite link stays valid for read-only history for 30 days (no sign-up). Easy to change to "guests must sign up" because it is one policy function.                                      |
+| Q4  | Default history retention                                 | T19                                                           | 30 days, host-configurable (30 days / 1 year / until deleted), host can delete any time.                                                                                                    |
+| Q5  | TeraPay: is a paid tier enough or is a signed DPA needed? | T14 (sensitive rooms) and the unscheduled TeraPay integration | `sensitive` rooms refuse free-tier keys and require the key owner to confirm "paid tier, no training". No DPA enforcement in code. The TeraPay integration is not scheduled until answered. |
+| Q6  | Standalone app sign-in method                             | T14, T24, T26                                                 | Firebase Auth (fits GCP and Firebase Hosting) with email link and Google. Sign in with Apple is added in T26, since the App Store requires it when other third-party sign-in is offered.    |
 
 ---
 
@@ -87,6 +87,7 @@ Build `packages/server` as a small TypeScript service (Hono on Node) deployable 
 **Done looks like**: tests cover auth failure, room create/get, token mint; `docker build` works; the server runs locally with `.env`.
 
 **Dani: manual steps**
+
 - Create a LiveKit Cloud project (free tier) and choose a region (Europe is a good start; check South America latency later). Copy URL, API key and secret.
 - Add them as repo/Cloud Run secrets (`LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`) and create an `OPENBLAH_API_KEYS` value.
 - If deploying: a GCP project with Cloud Run and Firestore enabled (the actual deploy is wired up in T5).
@@ -135,6 +136,7 @@ Add `POST /v1/warmup` to the server (authenticated, cheap, idempotent, rate-limi
 **Done looks like**: warm-up works end to end in staging; the cold start number is in the docs; the deploy workflow includes the Viber report step.
 
 **Dani: manual steps**
+
 - GCP: create the project (or reuse one), enable Cloud Run, Artifact Registry, Secret Manager, create a deploy service account with the needed roles and add its key or workload identity config as a repo secret.
 - Add repo secrets `VIBER_URL`, `VIBER_HOOK_SECRET`, `GCP_*` as named in `docs/deploy.md`.
 
@@ -167,6 +169,7 @@ Build `packages/react-native` with the same API as `@openblah/web` (same client,
 **Done looks like**: typecheck and tests pass; `docs/react-native.md` explains `expo prebuild` and running the dev build; the example app compiles in CI via typecheck.
 
 **Dani: manual steps**
+
 - On your Mac: `pnpm install`, then in `apps/example` run `npx expo prebuild` and `npx expo run:ios --device` with a free provisioning profile (7-day signing). No paid Apple account needed yet.
 - Test with a second tab (T3 test page) and report any audio, screen-lock or Bluetooth problems.
 
@@ -277,6 +280,7 @@ Add the key modes to the server and agent: (1) **product key**: the embedding pr
 **Done looks like**: tests prove the rules; `docs/keys-and-trial.md` explains the modes.
 
 **Dani: manual steps**
+
 - Create a Firebase project (or reuse the GCP one) and enable Auth with email link and Google. Add the project ID as a repo secret.
 - Create a Secret Manager secret for the key-encryption key (`KEY_ENCRYPTION_SECRET`).
 
@@ -370,6 +374,7 @@ Add per-room max duration, an idle timeout, per-user and per-host monthly minute
 **Done looks like**: tests prove caps and the £50 stop; `docs/costs.md` exists.
 
 **Dani: manual steps**
+
 - In GCP Billing create a budget of £50/month on the project with alerts at 50%, 80% and 100% (£25 / £40 / £50).
 - Set spend limits at OpenAI, Deepgram, ElevenLabs and Google AI Studio/Cloud quotas where offered.
 - Confirm the current LiveKit free-tier limits against the pricing page (minutes, concurrent participants, agent hosting) and tell the session if they differ from `docs/costs.md`.
@@ -403,6 +408,7 @@ Prepare and run the first npm release: package `files`, `exports`, types, proven
 **Done looks like**: a dry-run publish (`pnpm publish --dry-run`) succeeds for each package; the release workflow is in place.
 
 **Dani: manual steps**
+
 - Create the `@openblah` npm organisation (or confirm the scope name) and an automation token; add it as the repo secret `NPM_TOKEN`.
 - Trigger the release workflow manually once the preview of this task looks right.
 - Run the MVP success test with Penelope when ready.
@@ -421,6 +427,7 @@ This repo gets a **Housekeeper integration guide**, `docs/integrations/housekeep
 **Done looks like**: guide and example exist and are tested; the Housekeeper brief is at the end of the guide.
 
 **Dani: manual steps**
+
 - Create the task in the Housekeeper repo from the brief at the end of the guide, once this one is merged.
 - Give the Housekeeper MCP server URL and how it accepts the user token (tell us if it needs changes).
 
@@ -469,6 +476,7 @@ Prepare the app for TestFlight and universal links: bundle ID, app icons and spl
 **Done looks like**: the config and AASA file are in place and linted; the release guide is complete.
 
 **Dani: manual steps**
+
 - Enrol in the Apple Developer Program, then create the App ID with Associated Domains and Sign in with Apple, and an App Store Connect app record.
 - Add the EAS or App Store Connect credentials as secrets named in `docs/release-ios.md`.
 - Upload the build and invite yourself in TestFlight.
@@ -487,6 +495,7 @@ Find out whether LiveKit's Swift SDK runs on watchOS. If yes, document the minim
 **Done looks like**: the report states what works and the chosen route with evidence; the protocol is written down; the bridge exists if needed.
 
 **Dani: manual steps**
+
 - Open `spikes/watch/` in Xcode on your Mac, run on your Apple Watch, and report results. The task writes the exact steps in the report (`git checkout feat/...` on your Mac).
 - A free provisioning profile may be enough to test; the paid account is needed to distribute.
 
@@ -520,6 +529,7 @@ Build `apps/guest-web` using only `@openblah/web`: the page behind `https://open
 **Done looks like**: tests pass; the preview shows the invite page with a mocked or real token; hosting config is committed.
 
 **Dani: manual steps**
+
 - Create the Firebase project and the `openblah` Hosting site so `openblah.web.app` exists (or tell us the real site ID), and add the Firebase deploy credentials as a repo secret.
 - Test in desktop Chrome, Safari and Firefox with a real invite from the dev page.
 

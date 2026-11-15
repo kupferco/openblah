@@ -1,6 +1,7 @@
 # Working notes for Claude
 
 <!-- viber:start -->
+
 ## Sessions started by Viber
 
 When the prompt says it comes from Viber, Dani is away from his computer and
@@ -81,8 +82,15 @@ The deploy report works the same way. In the step "Tell Viber how the deploy
 went", POST to `$VIBER_URL/hooks/deploy` with the bearer secret:
 
 ```json
-{"repo":"owner/name","env":"staging","sha":"<commit>","branch":"<branch>","outcome":"needs_manual",
- "runUrl":"<run page>","manual":{"reason":"...","action":"...","commands":["..."],"verify":"..."}}
+{
+  "repo": "owner/name",
+  "env": "staging",
+  "sha": "<commit>",
+  "branch": "<branch>",
+  "outcome": "needs_manual",
+  "runUrl": "<run page>",
+  "manual": { "reason": "...", "action": "...", "commands": ["..."], "verify": "..." }
+}
 ```
 
 - `outcome` is `deployed`, `failed` or `needs_manual` (an owner step; send `manual` with it).
@@ -104,11 +112,24 @@ and `VIBER_HOOK_SECRET`. Simplest: one step that calls Viber's action
 ```yaml
 # after the preview deploy
 - uses: kupferco/viber/.github/actions/report@main
-  with: { kind: preview, url: "<preview url>", viber-url: "${{ secrets.VIBER_URL }}", hook-secret: "${{ secrets.VIBER_HOOK_SECRET }}" }
+  with:
+    {
+      kind: preview,
+      url: "<preview url>",
+      viber-url: "${{ secrets.VIBER_URL }}",
+      hook-secret: "${{ secrets.VIBER_HOOK_SECRET }}",
+    }
 # after the production deploy, on success and on failure
 - uses: kupferco/viber/.github/actions/report@main
   if: always()
-  with: { kind: deploy, env: prod, outcome: "${{ job.status == 'success' && 'deployed' || 'failed' }}", viber-url: "${{ secrets.VIBER_URL }}", hook-secret: "${{ secrets.VIBER_HOOK_SECRET }}" }
+  with:
+    {
+      kind: deploy,
+      env: prod,
+      outcome: "${{ job.status == 'success' && 'deployed' || 'failed' }}",
+      viber-url: "${{ secrets.VIBER_URL }}",
+      hook-secret: "${{ secrets.VIBER_HOOK_SECRET }}",
+    }
 ```
 
 The same by hand, header `Authorization: Bearer $VIBER_HOOK_SECRET`, JSON body:
