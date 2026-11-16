@@ -16,7 +16,10 @@
     "build": "tsc -p tsconfig.json",
     "dev": "tsx --env-file=../../.env src/worker.ts dev",
     "start": "node dist/worker.js start",
-    "download-files": "node dist/worker.js download-files"
+    "download-files": "node dist/worker.js download-files",
+    "group:fixtures": "tsx src/group/cli.ts fixtures",
+    "group:replay": "tsx --env-file-if-exists=../../.env src/group/cli.ts replay",
+    "group:eval": "tsx --env-file-if-exists=../../.env src/group/cli.ts eval"
   },
   "dependencies": {
     "@livekit/agents": "^1.10.0",
