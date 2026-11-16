@@ -9,6 +9,7 @@ function setup() {
   const livekit: LiveKitGateway = {
     createRoom: vi.fn(async () => {}),
     createToken: vi.fn(async (r) => `tok:${r.roomId}:${r.userId}:${r.isHost}`),
+    dispatchAgent: vi.fn(async () => ({ dispatchId: "AD_1", created: true })),
   };
   const app = createApp({ storage: new MemoryStorage(), livekit, apiKeys: [KEY, "other"] });
   const call = (method: string, path: string, body?: unknown, key: string | null = KEY) =>
@@ -43,6 +44,7 @@ describe("auth", () => {
       expect((await call("POST", "/v1/rooms", host, key)).status).toBe(401);
       expect((await call("GET", "/v1/rooms/x", undefined, key)).status).toBe(401);
       expect((await call("POST", "/v1/tokens", {}, key)).status).toBe(401);
+      expect((await call("POST", "/v1/rooms/x/agent", {}, key)).status).toBe(401);
     }
     expect(livekit.createRoom).not.toHaveBeenCalled();
   });
@@ -135,5 +137,33 @@ describe("tokens", () => {
     const res = await call("POST", "/v1/rooms", host);
     expect(res.status).toBe(500);
     expect(await res.text()).not.toContain("secret-detail");
+  });
+});
+
+describe("agent dispatch", () => {
+  it("dispatches the agent into an existing room", async () => {
+    const { call, livekit } = setup();
+    const room = (await (await call("POST", "/v1/rooms", host)).json()) as { id: string };
+    const res = await call("POST", `/v1/rooms/${room.id}/agent`);
+    expect(res.status).toBe(201);
+    expect(await res.json()).toMatchObject({ roomId: room.id, dispatchId: "AD_1", created: true });
+    expect(livekit.dispatchAgent).toHaveBeenCalledWith(room.id, expect.any(String));
+  });
+
+  it("returns 200 when the agent is already there", async () => {
+    const { call, livekit } = setup();
+    vi.mocked(livekit.dispatchAgent).mockResolvedValueOnce({ dispatchId: "AD_1", created: false });
+    const room = (await (await call("POST", "/v1/rooms", host)).json()) as { id: string };
+    expect((await call("POST", `/v1/rooms/${room.id}/agent`)).status).toBe(200);
+  });
+
+  it("404 for unknown rooms and 409 when the agent is off", async () => {
+    const { call, livekit } = setup();
+    expect((await call("POST", "/v1/rooms/nope/agent")).status).toBe(404);
+    const room = (await (await call("POST", "/v1/rooms", { ...host, agent: "off" })).json()) as {
+      id: string;
+    };
+    expect((await call("POST", `/v1/rooms/${room.id}/agent`)).status).toBe(409);
+    expect(livekit.dispatchAgent).not.toHaveBeenCalled();
   });
 });
