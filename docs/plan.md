@@ -64,13 +64,14 @@ Status tags used on every item:
 - **Recommended**: Per-participant audio tracks: transcribe each human track separately, so the transcript knows who spoke without diarization guesses. Each line is tagged `[Penelope]: ...` in the LLM context.
 - **Verify**: Current LiveKit Agents support for multiple simultaneous participants in one session (the default AgentSession targets one linked participant). Group mode may need one STT stream per participant managed by our own code. This is the biggest technical unknown; spike it first.
 - **Verify**: LiveKit Cloud's built-in inference (bundled STT/LLM/TTS) vs bringing own API keys, and what the free tier includes.
+- **Recommended**: Mask latency: say a short acknowledgement while the answer loads, and stream the reply (idea from the 16 Nov 2026 field test).
 - **Recommended**: Target end-to-end latency under ~1.2 s from end of speech to first agent audio for direct questions. Measure from day one.
 
 ### 2.4 Turn-taking and interruption
 
 - **Recommended**: Use LiveKit's turn detector model plus VAD for end-of-turn, and allow barge-in: if any human speaks over the agent, the agent stops within ~300 ms and drops the unspoken rest.
 - **Recommended**: Distinguish backchannel ("mm", "yeah") from real interruption; don't stop for backchannel.
-- **Recommended**: Never speak over two humans talking to each other; wait for a pause of ~1 s.
+- **Recommended**: Never speak over two humans talking to each other; wait for a pause of ~1 s. **Field test (16 Nov 2026)**: in a three-way call a 1-2 s pause was too short and the agent talked over people. In group calls use a longer end-of-turn wait (to tune, see open question 7) and a semantic end-of-turn model (words and tone), not silence alone. See [field test notes](notes/field-test-2026-11-16.md).
 
 ### 2.5 When the agent speaks in a group
 
@@ -84,6 +85,8 @@ This is the product's core. Default is silent.
 - **Recommended**: Decision is made by a cheap, fast "should I speak?" classifier call on each finished turn (small model, outputs speak/stay-quiet + reason), separate from the main LLM. Logged for tuning.
 - **Recommended**: Replies are short by default (1–3 sentences), longer only if asked.
 - **Recommended**: Addressing is by name plus context: if Dani says "<agent name>, what do you think?" the agent answers; if he says "Penelope, what do you think?" it stays quiet. Eye-contact style cues don't exist, so name use is the main signal; the classifier uses recent turns.
+- **Recommended**: Handoffs between humans ("go on, Ryan") count as addressing someone else: the classifier must recognise them and stay quiet. Field test: this was clumsy.
+- **Recommended**: Optional soft cue (sound or light) when the agent wants to speak, so people can say "go ahead" or ignore it (open question 8).
 - **Recommended**: Visible state on every client (listening / thinking / speaking / muted) so people trust it. A "mute the agent" control for everyone.
 
 ### 2.6 Group calls and the optional agent
@@ -302,3 +305,9 @@ Only what Dani has not yet answered. Everything else is Decided above.
 4. How long should call history (transcript and summary) be kept by default: 30 days, a year, or until deleted?
 5. For TeraPay (patient data): is a paid Gemini/other tier with a no-training agreement enough, or must the agent run on a provider with a signed data processing agreement (and for Brazil, LGPD)?
 6. How do users of the standalone app sign in to OpenBlah itself: email link, Apple/Google sign-in, or both?
+7. How long should the end-of-turn wait be in group calls (the 1-2 s used in the field test was too short)? Tune against real calls. See [field test notes](notes/field-test-2026-11-16.md).
+8. Is a soft cue (sound or light) when the agent wants to speak worth building in the MVP, and in what form with the phone in a pocket?
+
+## Field test: three-way call (16 Nov 2026)
+
+Dani, his colleague Ryan and Claude in voice mode, phone in pocket, voice only. It worked: a real task was created and corrected live (Leeds changed to Manchester). Ryan's request became a task in minutes and his follow-up idea went to the backlog. Main problem: turn-taking (the AI spoke on 1-2 s pauses and over people), plus clumsy human handoffs and unreliable speaker identification. Positioning confirmed: voice first, phone in pocket, people walking around; not a competitor to Meet/Teams. Details and the full list of inputs: [docs/notes/field-test-2026-11-16.md](notes/field-test-2026-11-16.md).
