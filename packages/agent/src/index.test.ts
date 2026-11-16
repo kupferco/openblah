@@ -5,6 +5,8 @@ import {
   buildSessionOptions,
   buildTurnLatencyLog,
   configFromEnv,
+  DEFAULT_GEMINI_MODEL,
+  defaultProviders,
   DirectAgent,
   detectLanguage,
   directInstructions,
@@ -71,6 +73,19 @@ describe("session options", () => {
     expect(BARGE_IN_MIN_DURATION_MS).toBeLessThanOrEqual(300);
     expect(t.interruption?.minDuration).toBe(BARGE_IN_MIN_DURATION_MS);
     expect(t.interruption?.resumeFalseInterruption).toBe(true);
+  });
+});
+
+describe("gemini model", () => {
+  const model = (env: Record<string, string>) =>
+    (defaultProviders({ GEMINI_API_KEY: "k", ...env }).llm.createLlm() as { model: string }).model;
+  it("defaults to gemini-3.8-flash", () => {
+    expect(DEFAULT_GEMINI_MODEL).toBe("gemini-3.8-flash");
+    expect(model({})).toBe("gemini-3.8-flash");
+    expect(model({ GEMINI_MODEL: "" })).toBe("gemini-3.8-flash");
+  });
+  it("can be overridden with GEMINI_MODEL", () => {
+    expect(model({ GEMINI_MODEL: "gemini-other" })).toBe("gemini-other");
   });
 });
 
