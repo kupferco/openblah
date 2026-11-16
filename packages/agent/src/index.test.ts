@@ -8,6 +8,7 @@ import {
   DEFAULT_GEMINI_MODEL,
   defaultProviders,
   DirectAgent,
+  geminiThinkingConfig,
   detectLanguage,
   directInstructions,
   turnHandling,
@@ -83,6 +84,10 @@ describe("gemini model", () => {
     expect(DEFAULT_GEMINI_MODEL).toBe("gemini-3.8-flash");
     expect(model({})).toBe("gemini-3.8-flash");
     expect(model({ GEMINI_MODEL: "" })).toBe("gemini-3.8-flash");
+  });
+  it("uses thinking level LOW for Gemini 3 and never a thinking budget", () => {
+    expect(geminiThinkingConfig("gemini-3.8-flash")).toEqual({ thinkingLevel: "LOW" });
+    expect(geminiThinkingConfig("gemini-2.5-flash")).toBeUndefined();
   });
   it("can be overridden with GEMINI_MODEL", () => {
     expect(model({ GEMINI_MODEL: "gemini-other" })).toBe("gemini-other");
