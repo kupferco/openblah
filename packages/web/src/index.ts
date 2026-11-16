@@ -1,4 +1,6 @@
-/** Placeholder so the package builds and tests; replaced by real code in later tasks. */
-export function webName(): string {
-  return "@openblah/web";
-}
+/**
+ * @openblah/web: web SDK for OpenBlah voice rooms. 0.x, unstable.
+ * The React hooks live in `@openblah/web/react` so the core works without React.
+ * @packageDocumentation
+ */
+export * from "./client.js";
