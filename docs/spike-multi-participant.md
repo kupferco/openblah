@@ -46,7 +46,7 @@ The scenarios cover "addressed by name", "humans talking to each other", "opinio
 - All six scenarios give the expected decision for the last human turn (`group:eval`: 6/6), using **rules only**. The model is called only for turns the rules cannot settle (a mid-sentence mention, an opinion cue with no name, a follow-up right after the agent spoke).
 - The speaker-tagged transcript comes out in turn order for two and three participants.
 - A "speak" decision carries `earliestSpeakMs`: the end of the last human speech on any track plus 1 s, so the agent does not talk over two humans (plan 2.4; the field test says 1 to 2 s was too short, so T9 should make this configurable and test longer).
-- Gate savings in the fixtures are 40 to 80 % of audio kept out of STT. Real rooms with talkative people will save less; a track that is silent costs nothing.
+- Gate savings in the fixtures are 34 to 100 % of audio (per track) kept out of STT. Real rooms with talkative people will save less; a track that is silent costs nothing.
 - **Not measured:** the model classifier's accuracy (needs `GEMINI_API_KEY`; `group:eval` will include it when set), real STT quality, end-to-end latency, and real-time behaviour with live LiveKit tracks.
 
 ## STT cost per track
