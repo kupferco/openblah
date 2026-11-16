@@ -17,6 +17,9 @@
         "@openblah/react-native/plugin",
         { "microphonePermission": "OpenBlah Example uses the microphone for voice calls." }
       ]
-    ]
+    ],
+    "experiments": {
+      "tsconfigPaths": false
+    }
   }
 }

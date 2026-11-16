@@ -6,9 +6,9 @@
   "main": "index.js",
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "start": "expo start --dev-client",
+    "start": "expo start --dev-client --port 8099",
     "prebuild": "expo prebuild",
-    "ios": "expo run:ios --device",
+    "ios": "expo run:ios --device --port 8099",
     "android": "expo run:android"
   },
   "dependencies": {

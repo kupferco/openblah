@@ -55,10 +55,14 @@ pnpm install
 pnpm --filter @openblah/react-native build   # builds @openblah/core first, then the SDK; the example resolves the SDK from dist
 cd apps/example
 npx expo prebuild
-npx expo run:ios --device
+pnpm ios        # expo run:ios --device --port 8099
 ```
 
-A free Apple provisioning profile is enough (7-day signing); no paid account is needed yet. After the app is installed, start the dev server with `pnpm start` in `apps/example`. Enter the LiveKit URL and a token from the server, and press Join. To test, join the same room from the T3 web test page in a second tab.
+A free Apple provisioning profile is enough (7-day signing); no paid account is needed yet. After the app is installed, start the dev server with `pnpm start` in `apps/example`.
+
+The example uses Metro port 8099, not the default 8081. A debug build loads its JavaScript from the port it was built with, and 8081 is often held by another Expo project on the same Mac. The app then runs that project's bundle and fails with "React Native version mismatch". Build with `pnpm ios` rather than Xcode's Run button (Xcode builds use 8081) and serve with `pnpm start`, so both use 8099.
+
+The example's `tsconfig.json` maps `@openblah/*` to source for `pnpm typecheck` only. `app.json` sets `experiments.tsconfigPaths: false` so Metro ignores those paths and bundles the built `dist` files; rebuild the SDK after changing it. Enter the LiveKit URL and a token from the server, and press Join. To test, join the same room from the T3 web test page in a second tab.
 
 Android: `npx expo run:android` works the same way (not tested yet).
 
