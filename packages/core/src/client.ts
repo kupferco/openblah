@@ -72,6 +72,13 @@ export type RoomLike = Pick<
 export interface OpenBlahClientOptions {
   /** Create the LiveKit room. Defaults to `new Room()`; mainly for tests. */
   createRoom?: () => RoomLike;
+  /**
+   * Runs before the room connects (e.g. start the native audio session on React Native).
+   * If it throws, the connection is not attempted.
+   */
+  beforeConnect?: () => Promise<void>;
+  /** Runs after the room is left, on disconnect or a failed connect. Errors are ignored. */
+  afterDisconnect?: () => Promise<void>;
 }
 
 type Listener<T> = (payload: T) => void;
@@ -98,6 +105,8 @@ const ROOM_EVENTS = [
 export class OpenBlahClient {
   private room: RoomLike | null = null;
   private readonly createRoom: () => RoomLike;
+  private readonly beforeConnect?: () => Promise<void>;
+  private readonly afterDisconnect?: () => Promise<void>;
   private listeners = new Map<keyof ClientEvents, Set<Listener<never>>>();
   private snapshot: ClientSnapshot = {
     status: "disconnected",
@@ -109,6 +118,8 @@ export class OpenBlahClient {
   private readonly onRoomEvent = () => this.refresh();
 
   constructor(options: OpenBlahClientOptions = {}) {
+    this.beforeConnect = options.beforeConnect;
+    this.afterDisconnect = options.afterDisconnect;
     this.createRoom =
       options.createRoom ?? (() => new Room({ adaptiveStream: true, dynacast: true }));
   }
@@ -125,16 +136,20 @@ export class OpenBlahClient {
    */
   async connect(serverUrl: string, token: string): Promise<void> {
     if (this.room) await this.disconnect();
-    const room = this.createRoom();
-    this.room = room;
-    for (const e of ROOM_EVENTS) room.on(e, this.onRoomEvent);
     this.update({ status: "connecting", error: null });
+    let room: RoomLike | null = null;
     try {
+      await this.beforeConnect?.();
+      room = this.createRoom();
+      this.room = room;
+      for (const e of ROOM_EVENTS) room.on(e, this.onRoomEvent);
       await room.connect(serverUrl, token);
       await room.localParticipant.setMicrophoneEnabled(true);
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
       this.teardown();
+      await room?.disconnect().catch(() => undefined);
+      await this.runAfterDisconnect();
       this.update({ status: "disconnected", error: error.message });
       this.emit("error", error);
       throw error;
@@ -149,6 +164,7 @@ export class OpenBlahClient {
     if (!room) return;
     this.teardown();
     await room.disconnect();
+    await this.runAfterDisconnect();
     this.update({
       status: "disconnected",
       participants: [],
@@ -178,6 +194,14 @@ export class OpenBlahClient {
     if (!set) this.listeners.set(event, (set = new Set()));
     set.add(listener as Listener<never>);
     return () => void set.delete(listener as Listener<never>);
+  }
+
+  private async runAfterDisconnect(): Promise<void> {
+    try {
+      await this.afterDisconnect?.();
+    } catch {
+      // Cleanup must not fail a disconnect.
+    }
   }
 
   private teardown(): void {

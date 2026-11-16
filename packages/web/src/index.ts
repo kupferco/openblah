@@ -3,4 +3,4 @@
  * The React hooks live in `@openblah/web/react` so the core works without React.
  * @packageDocumentation
  */
-export * from "./client.js";
+export * from "@openblah/core";

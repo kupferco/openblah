@@ -1,0 +1,46 @@
+{
+  "name": "@openblah/core",
+  "version": "0.0.1",
+  "license": "MIT",
+  "description": "Shared client and React hooks behind @openblah/web and @openblah/react-native (0.x, unstable). Use those packages, not this one.",
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json"
+  },
+  "dependencies": {
+    "livekit-client": "^2.24.1"
+  },
+  "devDependencies": {
+    "@types/react-test-renderer": "^19.1.0",
+    "react-test-renderer": "^19.3.1",
+    "@types/react": "^19.3.0",
+    "react": "^19.3.1"
+  },
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "default": "./dist/react.js"
+    }
+  }
+}
