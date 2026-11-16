@@ -24,6 +24,11 @@ const ANDROID_PERMISSIONS = [
   "android.permission.INTERNET",
 ];
 
+/** A required plugin may be a CommonJS function or an ES module with a default export. */
+function interopDefault(mod) {
+  return mod && typeof mod === "object" && "default" in mod ? mod.default : mod;
+}
+
 /** Pure helper so it can be tested: add `audio` to UIBackgroundModes and the mic text. */
 function applyIosInfoPlist(plist, microphonePermission) {
   const modes = new Set(plist.UIBackgroundModes ?? []);
@@ -36,8 +41,11 @@ function applyIosInfoPlist(plist, microphonePermission) {
 function withOpenBlah(config, options = {}) {
   const microphonePermission = options.microphonePermission ?? DEFAULT_MIC_TEXT;
   return withPlugins(config, [
-    [require("@livekit/react-native-expo-plugin/app.plugin.js"), options.livekit ?? {}],
-    [require("@config-plugins/react-native-webrtc"), { microphonePermission }],
+    [
+      interopDefault(require("@livekit/react-native-expo-plugin/app.plugin.js")),
+      options.livekit ?? {},
+    ],
+    [interopDefault(require("@config-plugins/react-native-webrtc")), { microphonePermission }],
     (c) =>
       withInfoPlist(c, (m) => {
         applyIosInfoPlist(m.modResults, microphonePermission);
@@ -57,3 +65,4 @@ function withOpenBlah(config, options = {}) {
 module.exports = createRunOncePlugin(withOpenBlah, "@openblah/react-native", "0.0.1");
 module.exports.applyIosInfoPlist = applyIosInfoPlist;
 module.exports.ANDROID_PERMISSIONS = ANDROID_PERMISSIONS;
+module.exports.interopDefault = interopDefault;
