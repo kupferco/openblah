@@ -2,3 +2,5 @@ node_modules
 dist
 coverage
 pnpm-lock.yaml
+.github/workflows/viber.yml
+.github/workflows/openpocket.yml
