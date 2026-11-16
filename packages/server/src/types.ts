@@ -7,6 +7,8 @@ export interface Room {
   agent: AgentMode;
   sensitive: boolean;
   metadata: Record<string, unknown>;
+  /** MCP servers for the agent. Server-side only: holds user tokens, never sent to clients. */
+  mcp?: Record<string, unknown>;
   createdAt: string;
 }
 

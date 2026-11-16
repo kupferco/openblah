@@ -34,6 +34,18 @@ export function roomMetadataJson(room: Room): string {
   });
 }
 
+/** Room as returned by the API: MCP tokens stay server-side. */
+function publicRoom(room: Room): Omit<Room, "mcp"> {
+  const rest: Partial<Room> = { ...room };
+  delete rest.mcp;
+  return rest as Omit<Room, "mcp">;
+}
+
+/** Job metadata for the agent: the public room metadata plus private MCP config (tokens). */
+export function dispatchMetadataJson(room: Room): string {
+  return JSON.stringify({ ...JSON.parse(roomMetadataJson(room)), mcp: room.mcp });
+}
+
 export function createApp(deps: AppDeps): Hono {
   const { storage, livekit } = deps;
   const ttl = deps.tokenTtlSeconds ?? 600;
@@ -74,6 +86,9 @@ export function createApp(deps: AppDeps): Hono {
     if (body.metadata !== undefined && !isRecord(body.metadata)) {
       return c.json({ error: "metadata must be an object" }, 400);
     }
+    if (body.mcp !== undefined && !isRecord(body.mcp)) {
+      return c.json({ error: "mcp must be an object" }, 400);
+    }
     const room: Room = {
       id: `rm_${randomBytes(12).toString("base64url")}`,
       hostUserId,
@@ -81,16 +96,17 @@ export function createApp(deps: AppDeps): Hono {
       agent: agent as AgentMode,
       sensitive: body.sensitive === true,
       metadata: (body.metadata as Record<string, unknown> | undefined) ?? {},
+      ...(body.mcp ? { mcp: { ownerId: hostUserId, ...(body.mcp as object) } } : {}),
       createdAt: now().toISOString(),
     };
     await storage.createRoom(room);
     await livekit.createRoom(room.id, roomMetadataJson(room));
-    return c.json(room, 201);
+    return c.json(publicRoom(room), 201);
   });
 
   v1.get("/rooms/:id", async (c) => {
     const room = await storage.getRoom(c.req.param("id"));
-    return room ? c.json(room) : c.json({ error: "room not found" }, 404);
+    return room ? c.json(publicRoom(room)) : c.json({ error: "room not found" }, 404);
   });
 
   v1.post("/tokens", async (c) => {
@@ -119,7 +135,10 @@ export function createApp(deps: AppDeps): Hono {
     const room = await storage.getRoom(c.req.param("id"));
     if (!room) return c.json({ error: "room not found" }, 404);
     if (room.agent === "off") return c.json({ error: "agent is off for this room" }, 409);
-    const { dispatchId, created } = await livekit.dispatchAgent(room.id, roomMetadataJson(room));
+    const { dispatchId, created } = await livekit.dispatchAgent(
+      room.id,
+      dispatchMetadataJson(room),
+    );
     return c.json({ roomId: room.id, dispatchId, created }, created ? 201 : 200);
   });
 

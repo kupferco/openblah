@@ -1,10 +1,10 @@
 import { cartesiaTts } from "./cartesia.js";
 import { deepgramStt } from "./deepgram.js";
-import { geminiLlm } from "./gemini.js";
+import { geminiLlm, geminiToolSchema } from "./gemini.js";
 import type { ProviderSet } from "./types.js";
 
 export * from "./types.js";
-export { cartesiaTts, deepgramStt, geminiLlm };
+export { cartesiaTts, deepgramStt, geminiLlm, geminiToolSchema };
 
 type Env = Record<string, string | undefined>;
 
