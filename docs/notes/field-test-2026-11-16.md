@@ -14,17 +14,17 @@ Design inputs from a real call: Dani, his colleague Ryan, and Claude in voice mo
 
 ## Design inputs
 
-| # | Input | Where it fits in the plan |
-|---|-------|---------------------------|
-| 2 | Longer end-of-turn wait in group calls (more than the 1-2 s that failed) | 2.4, open question 7 |
-| 2 | Speak only when addressed by name or asked a clear question, otherwise listen | Already in 2.5; this test confirms it |
-| 2 | Semantic end-of-turn model (words and tone), not silence alone | 2.4 |
-| 2 | Optional soft cue (sound or light) when the AI wants to speak, so people can say "go ahead" or ignore it | 2.5, open question 8 |
-| 3 | Recognise a handoff to another person ("go on, Ryan") and stay quiet | 2.5 |
-| 4 | Tag each participant's audio and transcript with their name | Already in 2.3 (per-participant tracks); keep it a hard requirement |
-| 5 | Acknowledge briefly while the answer loads; stream the reply | 2.3 latency target |
-| 6 | Voice-first, phone-in-pocket positioning | Section 1 |
-| 7 | Live idea-to-task and idea-to-backlog flow as the demo scenario | MVP scope and demo |
+| #   | Input                                                                                                    | Where it fits in the plan                                           |
+| --- | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| 2   | Longer end-of-turn wait in group calls (more than the 1-2 s that failed)                                 | 2.4, open question 7                                                |
+| 2   | Speak only when addressed by name or asked a clear question, otherwise listen                            | Already in 2.5; this test confirms it                               |
+| 2   | Semantic end-of-turn model (words and tone), not silence alone                                           | 2.4                                                                 |
+| 2   | Optional soft cue (sound or light) when the AI wants to speak, so people can say "go ahead" or ignore it | 2.5, open question 8                                                |
+| 3   | Recognise a handoff to another person ("go on, Ryan") and stay quiet                                     | 2.5                                                                 |
+| 4   | Tag each participant's audio and transcript with their name                                              | Already in 2.3 (per-participant tracks); keep it a hard requirement |
+| 5   | Acknowledge briefly while the answer loads; stream the reply                                             | 2.3 latency target                                                  |
+| 6   | Voice-first, phone-in-pocket positioning                                                                 | Section 1                                                           |
+| 7   | Live idea-to-task and idea-to-backlog flow as the demo scenario                                          | MVP scope and demo                                                  |
 
 ## Open questions from this test
 
