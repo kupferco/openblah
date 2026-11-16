@@ -2,6 +2,7 @@ import { createApp } from "./app.js";
 import { parseApiKeys } from "./auth.js";
 import { FirestoreStorage } from "./firestore.js";
 import { RealLiveKit } from "./livekit.js";
+import { HttpWorkerWaker } from "./worker.js";
 import { MemoryStorage } from "./storage.js";
 import type { Storage } from "./types.js";
 
@@ -28,5 +29,12 @@ export function createAppFromEnv(env: Env = process.env) {
   if (kind === "firestore") storage = new FirestoreStorage();
   else if (kind === "memory") storage = new MemoryStorage();
   else throw new Error(`OPENBLAH_STORAGE must be "memory" or "firestore", got "${kind}"`);
-  return createApp({ storage, livekit, apiKeys });
+  return createApp({
+    storage,
+    livekit,
+    apiKeys,
+    worker: env.AGENT_WORKER_URL
+      ? new HttpWorkerWaker(env.AGENT_WORKER_URL, env.AGENT_WORKER_AUTH === "iam")
+      : undefined,
+  });
 }

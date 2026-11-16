@@ -5,3 +5,4 @@
  * @packageDocumentation
  */
 export * from "./client.js";
+export * from "./warmup.js";

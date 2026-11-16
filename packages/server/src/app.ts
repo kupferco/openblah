@@ -1,7 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { Hono } from "hono";
 import { apiKeyAuth } from "./auth.js";
-import type { AgentMode, LiveKitGateway, Room, Storage } from "./types.js";
+import { RateLimiter } from "./ratelimit.js";
+import type { AgentMode, LiveKitGateway, Room, Storage, WorkerWaker } from "./types.js";
 
 export interface AppDeps {
   storage: Storage;
@@ -9,6 +10,12 @@ export interface AppDeps {
   apiKeys: readonly string[];
   tokenTtlSeconds?: number;
   now?: () => Date;
+  /** Starts the agent worker on warm-up and before dispatch. Default: does nothing. */
+  worker?: WorkerWaker;
+  /** Warm-up calls allowed per user per minute (default 6). */
+  warmupPerMinute?: number;
+  /** Clock in ms for the rate limiter; mainly for tests. */
+  nowMs?: () => number;
 }
 
 const AGENT_MODES: readonly AgentMode[] = ["on", "off", "ask"];
@@ -38,6 +45,10 @@ export function createApp(deps: AppDeps): Hono {
   const { storage, livekit } = deps;
   const ttl = deps.tokenTtlSeconds ?? 600;
   const now = deps.now ?? (() => new Date());
+  const worker: WorkerWaker = deps.worker ?? { wake: async () => false };
+  const warmupLimit = new RateLimiter(deps.warmupPerMinute ?? 6, 60_000, deps.nowMs);
+  // Waking is idempotent; coalesce so a burst of users causes one request to the worker.
+  let lastWake = 0;
   const app = new Hono();
 
   app.get("/health", (c) => c.json({ ok: true }));
@@ -114,11 +125,33 @@ export function createApp(deps: AppDeps): Hono {
     return c.json({ token, roomId, expiresIn: ttl });
   });
 
+  // Warm-up: the client calls this when it opens, before the user taps. It only
+  // wakes the agent worker (scale-to-zero); no STT, LLM or TTS call is made.
+  v1.post("/warmup", async (c) => {
+    const body = await readBody(c);
+    if (!body) return c.json({ error: "invalid JSON body" }, 400);
+    const userId = str(body.userId, MAX_ID);
+    if (!userId) return c.json({ error: "userId is required" }, 400);
+    const wait = warmupLimit.check(userId);
+    if (wait > 0) {
+      c.header("Retry-After", String(Math.ceil(wait / 1000)));
+      return c.json({ error: "too many warm-up calls" }, 429);
+    }
+    const t = (deps.nowMs ?? Date.now)();
+    if (t - lastWake < 10_000) return c.json({ status: "warm" });
+    lastWake = t;
+    const woke = await worker.wake();
+    if (!woke) lastWake = 0;
+    return c.json({ status: woke ? "warming" : "unavailable" });
+  });
+
   // Tap-to-start: the host app calls this when the user taps to talk to the agent.
   v1.post("/rooms/:id/agent", async (c) => {
     const room = await storage.getRoom(c.req.param("id"));
     if (!room) return c.json({ error: "room not found" }, 404);
     if (room.agent === "off") return c.json({ error: "agent is off for this room" }, 409);
+    // Make sure the worker is up (cold start); the call works as a plain room until it joins.
+    await worker.wake().catch(() => false);
     const { dispatchId, created } = await livekit.dispatchAgent(room.id, roomMetadataJson(room));
     return c.json({ roomId: room.id, dispatchId, created }, created ? 201 : 200);
   });

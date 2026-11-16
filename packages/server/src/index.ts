@@ -5,4 +5,13 @@ export { apiKeyAuth, isValidApiKey, parseApiKeys } from "./auth.js";
 export { MemoryStorage } from "./storage.js";
 export { FirestoreStorage } from "./firestore.js";
 export { RealLiveKit } from "./livekit.js";
-export type { AgentMode, LiveKitGateway, Room, Storage, TokenRequest } from "./types.js";
+export type {
+  AgentMode,
+  LiveKitGateway,
+  Room,
+  Storage,
+  TokenRequest,
+  WorkerWaker,
+} from "./types.js";
+export { HttpWorkerWaker, NoopWaker } from "./worker.js";
+export { RateLimiter } from "./ratelimit.js";
