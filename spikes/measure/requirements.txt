@@ -1,0 +1,4 @@
+livekit>=1.0
+livekit-api>=1.0
+numpy
+httpx
