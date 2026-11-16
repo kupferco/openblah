@@ -1,4 +1,9 @@
-/** Placeholder so the package builds and tests; replaced by real code in later tasks. */
-export function reactNativeName(): string {
-  return "@openblah/react-native";
-}
+/**
+ * @openblah/react-native: React Native SDK for OpenBlah voice rooms. 0.x, unstable.
+ * Same client and hooks as `@openblah/web`. Needs an Expo dev build, not Expo Go.
+ * @packageDocumentation
+ */
+export * from "@openblah/core";
+export * from "@openblah/core/react";
+export { registerOpenBlahGlobals, createOpenBlahClient } from "./native.js";
+export { CALL_APPLE_AUDIO, createCallAudio, type AudioSessionLike } from "./audio.js";

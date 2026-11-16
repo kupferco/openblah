@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "OpenBlah Example",
+    "slug": "openblah-example",
+    "version": "0.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "bundleIdentifier": "dev.openblah.example",
+      "supportsTablet": false
+    },
+    "android": {
+      "package": "dev.openblah.example"
+    },
+    "plugins": [
+      [
+        "@openblah/react-native/plugin",
+        { "microphonePermission": "OpenBlah Example uses the microphone for voice calls." }
+      ]
+    ]
+  }
+}

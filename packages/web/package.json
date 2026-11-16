@@ -18,7 +18,7 @@
     "build:dev": "vite build --config dev/vite.config.ts dev"
   },
   "dependencies": {
-    "livekit-client": "^2.24.1"
+    "@openblah/core": "workspace:^"
   },
   "devDependencies": {
     "@types/react": "^19.3.0",

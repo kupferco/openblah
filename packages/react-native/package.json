@@ -1,7 +1,8 @@
 {
   "name": "@openblah/react-native",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "license": "MIT",
+  "description": "OpenBlah React Native SDK (0.x, unstable): LiveKit voice rooms with an AI agent, for Expo dev builds (not Expo Go).",
   "publishConfig": {
     "access": "public"
   },
@@ -9,10 +10,38 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "plugin"
   ],
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.build.json"
+  },
+  "dependencies": {
+    "@config-plugins/react-native-webrtc": "^15.0.2",
+    "@livekit/react-native-expo-plugin": "^1.1.0",
+    "@openblah/core": "workspace:^"
+  },
+  "devDependencies": {
+    "@expo/config-plugins": "^58.0.0",
+    "@livekit/react-native": "^3.1.0",
+    "@livekit/react-native-webrtc": "^150.1.1",
+    "@types/react": "^19.3.0",
+    "livekit-client": "^2.24.1",
+    "react": "^19.3.1",
+    "react-native": "^0.88.1"
+  },
+  "peerDependencies": {
+    "@livekit/react-native": "^3.1.0",
+    "@livekit/react-native-webrtc": "^150.1.0",
+    "expo": ">=56",
+    "livekit-client": "^2.24.1",
+    "react": ">=18",
+    "react-native": "*"
+  },
+  "peerDependenciesMeta": {
+    "expo": {
+      "optional": true
+    }
   }
 }

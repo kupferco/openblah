@@ -7,4 +7,12 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   prettier,
+  {
+    // Expo loads config plugins with require(), so they are CommonJS.
+    files: ["**/plugin/**/*.js", "**/*.cjs", "apps/example/metro.config.js"],
+    languageOptions: {
+      globals: { module: "writable", require: "readonly", __dirname: "readonly" },
+    },
+    rules: { "@typescript-eslint/no-require-imports": "off" },
+  },
 );
