@@ -52,7 +52,7 @@ This is set up from the library docs and unit-tested with a mock, but not yet ch
 
 ```sh
 pnpm install
-pnpm --filter @openblah/react-native build   # the example resolves the SDK from dist
+pnpm --filter @openblah/react-native build   # builds @openblah/core first, then the SDK; the example resolves the SDK from dist
 cd apps/example
 npx expo prebuild
 npx expo run:ios --device

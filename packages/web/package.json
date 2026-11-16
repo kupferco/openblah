@@ -13,7 +13,7 @@
   ],
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.dev.json",
-    "build": "tsc -p tsconfig.json",
+    "build": "pnpm --filter @openblah/core build && tsc -p tsconfig.json",
     "dev": "vite --config dev/vite.config.ts dev",
     "build:dev": "vite build --config dev/vite.config.ts dev"
   },

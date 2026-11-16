@@ -15,7 +15,7 @@
   ],
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "build": "tsc -p tsconfig.build.json"
+    "build": "pnpm --filter @openblah/core build && tsc -p tsconfig.build.json"
   },
   "dependencies": {
     "@config-plugins/react-native-webrtc": "^15.0.2",
