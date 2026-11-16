@@ -2,12 +2,15 @@ import { AccessToken, AgentDispatchClient, RoomServiceClient } from "livekit-ser
 import type { VideoGrant } from "livekit-server-sdk";
 import type { LiveKitGateway, Role, TokenRequest } from "./types.js";
 
+/** Must match the agent worker's dispatch name (packages/agent). */
+export const DEFAULT_AGENT_DISPATCH_NAME = "openblah-agent";
+
 export interface LiveKitConfig {
   url: string;
+  /** Name the agent worker registers under (explicit dispatch). */
+  agentName?: string;
   apiKey: string;
   apiSecret: string;
-  /** Name the agent worker registers under. */
-  agentWorkerName?: string;
 }
 
 /**
@@ -29,13 +32,13 @@ export function grantsFor(role: Role, roomId: string): VideoGrant {
 
 export class RealLiveKit implements LiveKitGateway {
   private readonly rooms: RoomServiceClient;
-  private readonly dispatch: AgentDispatchClient;
+  private readonly dispatches: AgentDispatchClient;
 
   constructor(private readonly cfg: LiveKitConfig) {
     // The room service API is HTTP; the configured URL is usually wss://.
     const httpUrl = cfg.url.replace(/^wss:/, "https:").replace(/^ws:/, "http:");
     this.rooms = new RoomServiceClient(httpUrl, cfg.apiKey, cfg.apiSecret);
-    this.dispatch = new AgentDispatchClient(httpUrl, cfg.apiKey, cfg.apiSecret);
+    this.dispatches = new AgentDispatchClient(httpUrl, cfg.apiKey, cfg.apiSecret);
   }
 
   async createRoom(roomId: string, metadata: string): Promise<void> {
@@ -54,8 +57,15 @@ export class RealLiveKit implements LiveKitGateway {
     await this.rooms.removeParticipant(roomId, userId);
   }
 
-  async dispatchAgent(roomId: string): Promise<void> {
-    await this.dispatch.createDispatch(roomId, this.cfg.agentWorkerName ?? "openblah-agent");
+  async dispatchAgent(
+    roomId: string,
+    metadata: string,
+  ): Promise<{ dispatchId: string; created: boolean }> {
+    const name = this.cfg.agentName ?? DEFAULT_AGENT_DISPATCH_NAME;
+    const existing = (await this.dispatches.listDispatch(roomId)).find((d) => d.agentName === name);
+    if (existing) return { dispatchId: existing.id, created: false };
+    const d = await this.dispatches.createDispatch(roomId, name, { metadata });
+    return { dispatchId: d.id, created: true };
   }
 
   async createToken(req: TokenRequest): Promise<string> {

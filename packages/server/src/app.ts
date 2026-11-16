@@ -437,7 +437,7 @@ export function createApp(deps: AppDeps): Hono {
         409,
       );
     }
-    await livekit.dispatchAgent(room.id);
+    await livekit.dispatchAgent(room.id, roomMetadataJson(room));
     return c.json({ dispatched: true });
   });
 
@@ -548,6 +548,15 @@ export function createApp(deps: AppDeps): Hono {
       expiresIn: ttl,
       ...(deps.livekitUrl ? { livekitUrl: deps.livekitUrl } : {}),
     });
+  });
+
+  // Tap-to-start: the host app calls this when the user taps to talk to the agent.
+  v1.post("/rooms/:id/agent", async (c) => {
+    const room = await storage.getRoom(c.req.param("id"));
+    if (!room) return c.json({ error: "room not found" }, 404);
+    if (room.agent === "off") return c.json({ error: "agent is off for this room" }, 409);
+    const { dispatchId, created } = await livekit.dispatchAgent(room.id, roomMetadataJson(room));
+    return c.json({ roomId: room.id, dispatchId, created }, created ? 201 : 200);
   });
 
   app.route("/v1", v1);

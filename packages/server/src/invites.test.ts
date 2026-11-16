@@ -19,7 +19,7 @@ function setup(opts: { max?: number } = {}) {
     updateRoomMetadata: vi.fn(async () => {}),
     deleteRoom: vi.fn(async () => {}),
     removeParticipant: vi.fn(async () => {}),
-    dispatchAgent: vi.fn(async () => {}),
+    dispatchAgent: vi.fn(async () => ({ dispatchId: "AD_1", created: true })),
     createToken: vi.fn(async (r) => {
       tokens.push(r);
       return `tok:${r.userId}:${r.role}`;
@@ -269,7 +269,7 @@ describe("consent", () => {
     }
     res = await d();
     expect(res.status).toBe(200);
-    expect(s.livekit.dispatchAgent).toHaveBeenCalledWith(id);
+    expect(s.livekit.dispatchAgent).toHaveBeenCalledWith(id, expect.any(String));
     expect(g.status).toBe(200);
   });
 

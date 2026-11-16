@@ -29,9 +29,11 @@ A pnpm workspaces monorepo (Node 20+, TypeScript strict).
 | ----------------------- | ------------------------------- | ----------------------------------------------------- |
 | `packages/server`       | `@openblah/server`              | Hosted voice server (LiveKit rooms, tokens, API keys) |
 | `packages/agent`        | `@openblah/agent`               | The AI agent that joins rooms                         |
+| `packages/core`         | `@openblah/core`                | Client and hooks shared by the web and RN packages    |
 | `packages/web`          | `@openblah/web`                 | npm package for browsers                              |
 | `packages/react-native` | `@openblah/react-native`        | npm package for React Native (Expo)                   |
 | `apps/app`              | `@openblah/app` (private)       | Standalone app                                        |
+| `apps/example`          | `@openblah/example` (private)   | Expo dev-build example for the React Native SDK       |
 | `apps/guest-web`        | `@openblah/guest-web` (private) | Browser guest page                                    |
 | `docs/`                 |                                 | `plan.md` and `tasks.md`                              |
 
@@ -57,3 +59,5 @@ Copy `.env.example` to `.env` for the variables later tasks will use. CI runs th
 ## Licence
 
 Open source under the [MIT licence](LICENSE).
+
+The React Native SDK and its example app are described in [docs/react-native.md](docs/react-native.md).

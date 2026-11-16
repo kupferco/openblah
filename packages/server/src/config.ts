@@ -21,7 +21,7 @@ export function createAppFromEnv(env: Env = process.env) {
     url: required(env, "LIVEKIT_URL"),
     apiKey: required(env, "LIVEKIT_API_KEY"),
     apiSecret: required(env, "LIVEKIT_API_SECRET"),
-    ...(env.OPENBLAH_AGENT_WORKER_NAME ? { agentWorkerName: env.OPENBLAH_AGENT_WORKER_NAME } : {}),
+    agentName: env.OPENBLAH_AGENT_DISPATCH_NAME || undefined,
   });
   const kind = env.OPENBLAH_STORAGE ?? "memory";
   let storage: Storage;

@@ -86,8 +86,14 @@ export interface LiveKitGateway {
   updateRoomMetadata(roomId: string, metadata: string): Promise<void>;
   deleteRoom(roomId: string): Promise<void>;
   removeParticipant(roomId: string, userId: string): Promise<void>;
-  /** Ask LiveKit to send the agent worker into the room. */
-  dispatchAgent(roomId: string): Promise<void>;
   /** Mint a short-lived join token. */
   createToken(req: TokenRequest): Promise<string>;
+  /**
+   * Dispatch the agent worker into the room. Idempotent: if the agent is
+   * already dispatched there, no second one is created.
+   */
+  dispatchAgent(
+    roomId: string,
+    metadata: string,
+  ): Promise<{ dispatchId: string; created: boolean }>;
 }

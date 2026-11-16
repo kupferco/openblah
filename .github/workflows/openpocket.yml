@@ -213,6 +213,165 @@ jobs:
           echo "Web lookups in this session:"; echo "$LIST"
           { printf '\n## Consulted on the web\n\n'; echo "$LIST"; } >> "$RUNNER_TEMP/openpocket-pr.md"
 
+      # The last step before the branch is offered as Ready: main may have moved during the
+      # run, so merge it in once more. A clean merge is kept. Conflicts go to a script that
+      # resolves only mechanical ones (lockfiles, generated files, pure-addition list merges;
+      # never schema, auth, secrets or deploy config), then the repo's checks run again. If any
+      # file is left over or a check fails, the merge is dropped and the branch is pushed as it
+      # was: OpenPocket shows the note and the owner decides.
+      - name: Sync with main before Ready
+        id: sync
+        if: steps.claude.outcome == 'success'
+        continue-on-error: true
+        run: |
+          git config user.name  >/dev/null || git config user.name  "OpenPocket"
+          git config user.email >/dev/null || git config user.email "openpocket@users.noreply.github.com"
+          out() { echo "status=$1" >> "$GITHUB_OUTPUT"; echo "note=$2" >> "$GITHUB_OUTPUT"; echo "risky=${3:-false}" >> "$GITHUB_OUTPUT"; echo "files=${4:-}" >> "$GITHUB_OUTPUT"; echo "$2"; }
+          if [ -n "$(git status --porcelain)" ]; then
+            git add -A
+            git commit -m "OpenPocket #${{ inputs.task_id }}: uncommitted work"
+          fi
+          # Nothing to offer when the session changed nothing.
+          [ "$(git rev-parse HEAD)" != "${{ steps.merge.outputs.start }}" ] || exit 0
+          git fetch origin "$BASE" || exit 0
+          if git merge-base --is-ancestor "origin/$BASE" HEAD; then out current "Up to date with $BASE"; exit 0; fi
+          PRE="$(git rev-parse HEAD)"
+          MSG="OpenPocket #${{ inputs.task_id }}: merge $BASE into $BRANCH"
+          if git merge --no-edit -m "$MSG" "origin/$BASE"; then out synced "Synced with $BASE, no conflicts"; exit 0; fi
+          git merge --abort 2>/dev/null || true
+          if git merge --no-edit -Xignore-space-change -m "$MSG" "origin/$BASE"; then out synced "Synced with $BASE, ignoring whitespace differences"; exit 0; fi
+          R="$RUNNER_TEMP/openpocket-resolver.mjs"
+          cat > "$R" <<'RESOLVER'
+          
+          import { execFileSync } from 'node:child_process';
+          import { readFileSync, writeFileSync } from 'node:fs';
+          
+          const git = (...a) => execFileSync('git', a, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+          
+          const NEVER = [
+            [/(^|\/)(schema\.sql|schema\.hcl|atlas\.hcl|atlas\.sum)$|(^|\/)migrations?\/|(^|\/)(prisma|drizzle)\/|\.sql$/i, 'database schema'],
+            [/(^|\/)(auth|oauth|session|login|passport|jwt)[^/]*\.(ts|tsx|js|jsx|mjs|py|go|rb)$|(^|\/)(auth|oauth)\//i, 'auth code'],
+            [/(^|\/)(\.env[^/]*|[^/]*secrets?[^/]*|[^/]*credentials?[^/]*|[^/]*\.(pem|key|p12))$/i, 'secrets'],
+            [/^\.github\/workflows\/(?!openpocket\.ya?ml$)|(^|\/)(Dockerfile[^/]*|cloudbuild[^/]*|app\.yaml|firebase\.json|fly\.toml|render\.yaml|vercel\.json|netlify\.toml|deploy[^/]*\.(sh|yml|yaml))$|^scripts\/deploy/i, 'deploy config'],
+          ];
+          function neverReason(file) {
+            for (const [re, why] of NEVER) if (re.test(file)) return why;
+            return null;
+          }
+          
+          const GENERATED = /^docs\/screenshots\//;
+          const OWN_WORKFLOW = /^\.github\/workflows\/openpocket\.ya?ml$/;
+          const importLine = (l) => /^\s*(import\s.+|export\s.+\sfrom\s.+|const\s.+=\s*require\(.+\));?\s*$/.test(l) && !/[{(]\s*$/.test(l);
+          const entryLine = (l) => /^\s*[\w'"./:@*-]+\s*,\s*$/.test(l) || /^\s*\{[^{}]*\}\s*,\s*$/.test(l) || /^\s*[\w'"-]+\s*:\s*[^{}()\[\]]+,\s*$/.test(l);
+          const callLine = (l) => {
+            if (!/^\s*[\w$.]+\(.*\);?\s*$/.test(l)) return false;
+            let d = 0;
+            for (const c of l) { if (c === '(') d++; else if (c === ')') d--; if (d < 0) return false; }
+            return d === 0;
+          };
+          const codeLine = (l) => l.trim() === '' || importLine(l) || entryLine(l) || callLine(l);
+          const bulletLine = (l) => l.trim() === '' || /^\s*([-*+]|\d+\.)\s+\S.*$/.test(l);
+          const balanced = (lines) => {
+            let d = 0;
+            for (const c of lines.join('\n')) { if (c === '{') d++; else if (c === '}') d--; if (d < 0) return false; }
+            return d === 0;
+          };
+          
+          // Which line test applies to this file, or null when a union merge is not allowed at all.
+          function unionRule(file) {
+            if (/\.(ts|tsx|js|jsx|mjs|cjs)$/.test(file)) return (lines) => lines.every(codeLine);
+            if (/\.md$/.test(file)) return (lines) => lines.every(bulletLine);
+            if (/\.css$/.test(file)) return (lines) => balanced(lines);
+            return null;
+          }
+          
+          // Parse a diff3 conflicted text. Returns null when a hunk is not a pure addition.
+          function unionMerge(text, ok) {
+            const lines = text.split('\n');
+            const out = [];
+            let i = 0, hunks = 0;
+            while (i < lines.length) {
+              if (!lines[i].startsWith('<<<<<<< ')) { out.push(lines[i++]); continue; }
+              const ours = [], base = [], theirs = [];
+              let part = ours;
+              i++;
+              for (; i < lines.length && !lines[i].startsWith('>>>>>>> '); i++) {
+                if (lines[i].startsWith('||||||| ')) part = base;
+                else if (lines[i] === '=======') part = theirs;
+                else part.push(lines[i]);
+              }
+              if (i >= lines.length) return null;
+              i++;
+              if (base.length > 0) return null;
+              if (!ok(ours) || !ok(theirs)) return null;
+              const same = ours.length === theirs.length && ours.every((l, k) => l === theirs[k]);
+              out.push(...ours);
+              if (!same) out.push(...theirs);
+              hunks++;
+            }
+            return hunks ? out.join('\n') : null;
+          }
+          
+          function resolveFile(file) {
+            const why = neverReason(file);
+            if (why) return { risky: why };
+            if (GENERATED.test(file) || OWN_WORKFLOW.test(file)) {
+              try { git('checkout', '--theirs', '--', file); git('add', '--', file); } catch { try { git('rm', '-q', '--', file); } catch (e) { return { reason: 'could not take main\'s copy' }; } }
+              return { ok: true };
+            }
+            if (/(^|\/)package-lock\.json$/.test(file)) {
+              try {
+                git('checkout', '--ours', '--', file);
+                const dir = file.includes('/') ? file.slice(0, file.lastIndexOf('/')) : '.';
+                execFileSync('npm', ['install', '--package-lock-only', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: dir, stdio: 'ignore' });
+                git('add', '--', file);
+                return { ok: true };
+              } catch { return { reason: 'the lockfile could not be regenerated' }; }
+            }
+            if (/(^|\/)(yarn\.lock|pnpm-lock\.yaml|Cargo\.lock|poetry\.lock|Gemfile\.lock|go\.sum)$/.test(file)) return { reason: 'lockfile this resolver cannot regenerate' };
+            const rule = unionRule(file);
+            if (!rule) return { reason: 'a file type that is not safe to merge by script' };
+            try { git('checkout', '--merge', '--conflict=diff3', '--', file); } catch { return { reason: 'both sides changed or removed the file' }; }
+            const merged = unionMerge(readFileSync(file, 'utf8'), rule);
+            if (merged === null) return { reason: 'both sides changed the same lines' };
+            writeFileSync(file, merged);
+            git('add', '--', file);
+            return { ok: true };
+          }
+          
+          const files = git('diff', '--name-only', '--diff-filter=U').split('\n').filter(Boolean);
+          const result = { resolved: [], unresolved: [], risky: [] };
+          for (const f of files) {
+            const r = resolveFile(f);
+            if (r.ok) result.resolved.push(f);
+            else if (r.risky) { result.risky.push(f); result.unresolved.push({ file: f, reason: r.risky + ' is never merged by script' }); }
+            else result.unresolved.push({ file: f, reason: r.reason });
+          }
+          console.log(JSON.stringify(result));
+          process.exit(result.unresolved.length ? 1 : 0);
+          
+          RESOLVER
+          if RESULT="$(node "$R")"; then
+            FILES="$(printf '%s' "$RESULT" | jq -r '.resolved | join(", ")')"
+            git commit --no-edit -m "$MSG"
+            CHECKS=ok
+            if [ -f package.json ]; then
+              if [ ! -d node_modules ]; then npm ci --no-audit --no-fund || CHECKS=failed; fi
+              for S in typecheck test build; do
+                [ "$CHECKS" = ok ] || break
+                if jq -e --arg s "$S" '.scripts[$s]' package.json >/dev/null; then npm run -s "$S" || CHECKS=failed; fi
+              done
+            fi
+            if [ "$CHECKS" = ok ]; then out resolved "Synced with $BASE, fixed a conflict in $FILES (by script)" false "$FILES"; exit 0; fi
+            git reset --hard "$PRE"
+            out failed "Could not sync with $BASE: the checks failed after resolving a conflict in $FILES, so the merge was dropped" false "$FILES"
+            exit 0
+          fi
+          FILES="$(printf '%s' "$RESULT" | jq -r '[.unresolved[].file] | join(", ")')"
+          RISKY="$(printf '%s' "$RESULT" | jq -r 'if (.risky | length) > 0 then "true" else "false" end')"
+          git merge --abort 2>/dev/null || git reset --hard "$PRE"
+          out failed "Could not sync with $BASE: $FILES conflict and need a person or a coding session" "$RISKY" "$FILES"
+
       - name: Push the branch
         id: push
         if: always()
@@ -256,6 +415,10 @@ jobs:
           PUSHED: ${{ steps.push.outputs.pushed }}
           PUSH_ERROR: ${{ steps.push.outputs.error }}
           PUSH_OUTCOME: ${{ steps.push.outcome }}
+          SYNC_STATUS: ${{ steps.sync.outputs.status }}
+          SYNC_NOTE: ${{ steps.sync.outputs.note }}
+          SYNC_RISKY: ${{ steps.sync.outputs.risky }}
+          SYNC_FILES: ${{ steps.sync.outputs.files }}
           EXEC_FILE: ${{ steps.claude.outputs.execution_file }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
@@ -274,7 +437,8 @@ jobs:
             --arg task "${{ inputs.task_id }}" --arg outcome "$OUTCOME" \
             --arg pushed "${PUSHED:-false}" --arg run "$RUN_URL" --arg summary "$SUMMARY" \
             --arg pushError "$PUSH_ERROR" --arg final "$FINAL" \
-            '{repo:$repo, branch:$branch, taskId:($task|tonumber), outcome:$outcome, pushed:($pushed=="true"), pushError:$pushError, runUrl:$run, summary:$summary, finalAnswer:$final}' \
+            --arg syncStatus "$SYNC_STATUS" --arg syncNote "$SYNC_NOTE" --arg syncRisky "$SYNC_RISKY" --arg syncFiles "$SYNC_FILES" \
+            '{syncStatus:$syncStatus, syncNote:$syncNote, syncRisky:($syncRisky=="true"), syncFiles:($syncFiles | split(", ") | map(select(. != "")))} + {repo:$repo, branch:$branch, taskId:($task|tonumber), outcome:$outcome, pushed:($pushed=="true"), pushError:$pushError, runUrl:$run, summary:$summary, finalAnswer:$final}' \
           | curl -fsS -X POST "$OPENPOCKET_URL/hooks/run" \
               -H "Authorization: Bearer $OPENPOCKET_HOOK_SECRET" \
               -H "Content-Type: application/json" --data-binary @-

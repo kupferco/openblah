@@ -2,6 +2,8 @@
 
 Web SDK for OpenBlah voice rooms: a framework-free client wrapping `livekit-client`, plus React hooks.
 
+The client and hooks live in `@openblah/core`, shared with `@openblah/react-native`; this package re-exports them.
+
 **0.x, unstable:** the API may change in any minor release.
 
 ## Core

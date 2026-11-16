@@ -4,7 +4,11 @@
     "noEmit": true,
     "lib": ["ES2022", "DOM"],
     "jsx": "react-jsx",
-    "types": ["node"]
+    "types": ["node"],
+    "paths": {
+      "@openblah/core": ["../core/src/index.ts"],
+      "@openblah/core/react": ["../core/src/react.ts"]
+    }
   },
   "include": ["src", "dev"]
 }
