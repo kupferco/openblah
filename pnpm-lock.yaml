@@ -166,6 +166,9 @@ importers:
       hono:
         specifier: ^4.13.18
         version: 4.13.18
+      jose:
+        specifier: ^6.2.17
+        version: 6.2.17
       livekit-server-sdk:
         specifier: ^2.19.3
         version: 2.19.3

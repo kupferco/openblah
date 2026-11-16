@@ -1,3 +1,6 @@
+import type { UserRecord } from "./accounts.js";
+import type { Provider, StoredKey } from "./keys.js";
+
 export type AgentMode = "on" | "off" | "ask";
 
 export interface Room {
@@ -8,12 +11,25 @@ export interface Room {
   sensitive: boolean;
   metadata: Record<string, unknown>;
   createdAt: string;
+  /** Server-only: id of the API key that created the room (picks product keys). Never returned. */
+  productKeyId?: string;
 }
 
 /** Storage for room metadata (later also invites and history). */
 export interface Storage {
   createRoom(room: Room): Promise<void>;
   getRoom(id: string): Promise<Room | null>;
+  /** Saved BYOK keys (encrypted). */
+  putKey(key: StoredKey): Promise<void>;
+  deleteKey(ownerId: string, provider: Provider): Promise<boolean>;
+  listKeys(ownerId: string): Promise<StoredKey[]>;
+  /** Minimal user records for the standalone app. */
+  upsertUser(user: UserRecord): Promise<UserRecord>;
+  getUser(id: string): Promise<UserRecord | null>;
+  /** Trial usage counters (seconds), keyed by scope id. */
+  getUsage(counterId: string): Promise<number>;
+  /** Atomically add seconds; returns the new total. */
+  addUsage(counterId: string, seconds: number): Promise<number>;
 }
 
 export interface TokenRequest {

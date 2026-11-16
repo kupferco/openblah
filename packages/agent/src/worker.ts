@@ -10,6 +10,7 @@ import {
 import { configFromEnv } from "./config.js";
 import { writeLog } from "./latency.js";
 import { attachLatencyLogging, buildSessionOptions, DirectAgent, loadModels } from "./pipeline.js";
+import { fetchRoomKeys, reportUsage, UsageMeter } from "./keys.js";
 import { defaultProviders } from "./providers/index.js";
 
 type Models = Awaited<ReturnType<typeof loadModels>>;
@@ -28,13 +29,30 @@ export default defineAgent({
     const cfg = configFromEnv();
     const models = ctx.proc.userData.models as Models;
     await ctx.connect();
-    const providers = defaultProviders();
+    const roomKeys = await fetchRoomKeys(ctx.room.name ?? "");
+    const providers = defaultProviders(process.env, roomKeys?.keys);
     const agent = new DirectAgent(cfg, providers.tts);
     const options = buildSessionOptions(providers, models.vad, models.turnDetector);
     agent.bindTts(options.tts as tts.TTS);
     const session = new voice.AgentSession(options);
     attachLatencyLogging(session, agent, ctx.room.name);
     await session.start({ agent, room: ctx.room });
+    if (roomKeys?.mode === "trial") {
+      // The server counts the trial; the worker only reports seconds and stops when it is used up.
+      const meter = new UsageMeter();
+      session.on(voice.AgentSessionEventTypes.AgentStateChanged, (ev) =>
+        meter.setState(ev.newState),
+      );
+      const timer = setInterval(() => {
+        void reportUsage(ctx.room.name ?? "", meter.take()).then((more) => {
+          if (!more) void session.close();
+        });
+      }, 10_000);
+      ctx.addShutdownCallback(async () => {
+        clearInterval(timer);
+        await reportUsage(ctx.room.name ?? "", meter.take());
+      });
+    }
     writeLog({ event: "agent_joined", roomId: ctx.room.name });
     session.generateReply({
       instructions: `Greet the person briefly as ${cfg.agentName} and ask how you can help.`,
