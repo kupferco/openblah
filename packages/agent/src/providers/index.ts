@@ -1,10 +1,22 @@
 import { cartesiaTts } from "./cartesia.js";
 import { deepgramStt } from "./deepgram.js";
-import { DEFAULT_GEMINI_MODEL, geminiLlm, geminiThinkingConfig } from "./gemini.js";
+import {
+  DEFAULT_GEMINI_MODEL,
+  geminiLlm,
+  geminiThinkingConfig,
+  geminiToolSchema,
+} from "./gemini.js";
 import type { ProviderSet } from "./types.js";
 
 export * from "./types.js";
-export { cartesiaTts, deepgramStt, DEFAULT_GEMINI_MODEL, geminiLlm, geminiThinkingConfig };
+export {
+  cartesiaTts,
+  deepgramStt,
+  DEFAULT_GEMINI_MODEL,
+  geminiLlm,
+  geminiThinkingConfig,
+  geminiToolSchema,
+};
 
 type Env = Record<string, string | undefined>;
 

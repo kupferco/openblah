@@ -11,6 +11,8 @@ export interface Room {
   agentName: string;
   sensitive: boolean;
   metadata: Record<string, unknown>;
+  /** MCP servers for the agent. Server-side only: holds user tokens, never sent to clients. */
+  mcp?: Record<string, unknown>;
   createdAt: string;
   /** Set when the host ends the room; no more tokens or invites. */
   endedAt?: string;
