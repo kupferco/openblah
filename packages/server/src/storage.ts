@@ -1,6 +1,7 @@
 import type { UserRecord } from "./accounts.js";
 import type { KeyProvider, StoredKey } from "./keys.js";
 import type { SettingsLevel } from "./settings.js";
+import type { McpConnectionRecord } from "./mcp-oauth.js";
 import type { ConsentRecord, Invite, Participant, Room, Storage } from "./types.js";
 
 export class MemoryStorage implements Storage {
@@ -9,6 +10,7 @@ export class MemoryStorage implements Storage {
   private readonly participants = new Map<string, Participant>();
   private readonly consents = new Map<string, ConsentRecord>();
   private readonly keys = new Map<string, StoredKey>();
+  private readonly mcp = new Map<string, McpConnectionRecord>();
   private readonly users = new Map<string, UserRecord>();
   private readonly usage = new Map<string, number>();
   private readonly settings = new Map<string, SettingsLevel>();
@@ -35,6 +37,25 @@ export class MemoryStorage implements Storage {
     return [...this.keys.values()]
       .filter((k) => k.ownerId === ownerId)
       .map((k) => structuredClone(k));
+  }
+
+  async putMcpConnection(rec: McpConnectionRecord): Promise<void> {
+    this.mcp.set(rec.id, structuredClone(rec));
+  }
+
+  async getMcpConnection(id: string): Promise<McpConnectionRecord | null> {
+    const r = this.mcp.get(id);
+    return r ? structuredClone(r) : null;
+  }
+
+  async listMcpConnections(ownerId: string): Promise<McpConnectionRecord[]> {
+    return [...this.mcp.values()]
+      .filter((r) => r.ownerId === ownerId)
+      .map((r) => structuredClone(r));
+  }
+
+  async deleteMcpConnection(id: string): Promise<void> {
+    this.mcp.delete(id);
   }
 
   async upsertUser(user: UserRecord): Promise<UserRecord> {

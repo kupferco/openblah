@@ -1,4 +1,5 @@
 import type { KeyInfo, KeyTier, Provider } from "./keys.js";
+import type { McpConnectionInfo } from "./mcp-oauth.js";
 import type { TrialStatus } from "./trial.js";
 
 export interface ServerClientOptions {
@@ -61,5 +62,31 @@ export class OpenBlahServerClient {
   /** Remaining free trial for the signed-in account. */
   getTrialStatus(): Promise<TrialStatus> {
     return this.call("GET", "/trial");
+  }
+
+  /** Start connecting an MCP server. Open `authorizationUrl` in a browser to consent. */
+  startMcpConnection(
+    url: string,
+    opts: { name?: string; scope?: string; returnUrl?: string } = {},
+  ): Promise<{ id: string; authorizationUrl: string }> {
+    return this.call("POST", "/mcp/connections", { url, ...opts });
+  }
+
+  async listMcpConnections(): Promise<McpConnectionInfo[]> {
+    return (await this.call<{ connections: McpConnectionInfo[] }>("GET", "/mcp/connections"))
+      .connections;
+  }
+
+  getMcpConnection(id: string): Promise<McpConnectionInfo> {
+    return this.call("GET", `/mcp/connections/${encodeURIComponent(id)}`);
+  }
+
+  testMcpConnection(id: string): Promise<{ ok: boolean; message: string }> {
+    return this.call("POST", `/mcp/connections/${encodeURIComponent(id)}/test`);
+  }
+
+  /** Disconnect: the stored tokens are deleted. */
+  async disconnectMcp(id: string): Promise<void> {
+    await this.call("DELETE", `/mcp/connections/${encodeURIComponent(id)}`);
   }
 }

@@ -56,3 +56,10 @@ export {
 export type { Language, LlmName, ModelChoice, SettingsLevel, SettingsPatch } from "./settings.js";
 export { vendorKeyChecker } from "./keycheck.js";
 export type { KeyChecker, KeyCheck } from "./keycheck.js";
+export { McpOAuthService, McpOAuthError, parsePreregistered } from "./mcp-oauth.js";
+export type {
+  McpConnectionInfo,
+  McpConnectionRecord,
+  McpConnectionStatus,
+  McpOAuthOptions,
+} from "./mcp-oauth.js";

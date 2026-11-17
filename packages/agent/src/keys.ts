@@ -30,6 +30,34 @@ export async function fetchRoomKeys(
 }
 
 /**
+ * Ask the OpenBlah server for the current access token of a person's saved MCP
+ * connection (it refreshes the token when needed). The token is used for the
+ * MCP request and never logged, spoken or put in the room.
+ */
+export async function fetchMcpToken(
+  roomId: string,
+  ownerId: string,
+  connectionId: string,
+  refresh = false,
+  env: Env = process.env,
+  fetchFn: typeof fetch = fetch,
+): Promise<string> {
+  const base = env.OPENBLAH_SERVER_URL;
+  const secret = env.OPENBLAH_AGENT_SECRET;
+  if (!base || !secret) throw new Error("MCP token lookup needs OPENBLAH_SERVER_URL");
+  const res = await fetchFn(
+    `${base.replace(/\/$/, "")}/internal/rooms/${encodeURIComponent(roomId)}/mcp-token`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ ownerId, connectionId, ...(refresh ? { refresh: true } : {}) }),
+    },
+  );
+  if (!res.ok) throw new Error(`MCP token lookup refused (${res.status})`);
+  return ((await res.json()) as { accessToken: string }).accessToken;
+}
+
+/**
  * Counts the seconds the agent listens, thinks or speaks and reports them to
  * the server, which does the trial accounting. `onExhausted` fires when the
  * server says the trial is used up.

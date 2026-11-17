@@ -5,3 +5,4 @@
  */
 export * from "@openblah/core";
 export { copyInviteLink, type ClipboardLike } from "./invite.js";
+export { connectMcpInBrowser, type ConnectMcpInBrowserOptions } from "./mcp.js";

@@ -1,6 +1,7 @@
 import type { UserRecord } from "./accounts.js";
 import type { KeyProvider, StoredKey } from "./keys.js";
 import type { SettingsLevel } from "./settings.js";
+import type { McpConnectionRecord } from "./mcp-oauth.js";
 
 export type AgentMode = "on" | "off" | "ask";
 /** host and member are app users; guest joined through an invite link. */
@@ -65,6 +66,11 @@ export interface Storage {
   putKey(key: StoredKey): Promise<void>;
   deleteKey(ownerId: string, provider: KeyProvider): Promise<boolean>;
   listKeys(ownerId: string): Promise<StoredKey[]>;
+  /** MCP OAuth connections (tokens sealed). Callers check `ownerId`. */
+  putMcpConnection(rec: McpConnectionRecord): Promise<void>;
+  getMcpConnection(id: string): Promise<McpConnectionRecord | null>;
+  listMcpConnections(ownerId: string): Promise<McpConnectionRecord[]>;
+  deleteMcpConnection(id: string): Promise<void>;
   /** Minimal user records for the standalone app. */
   upsertUser(user: UserRecord): Promise<UserRecord>;
   getUser(id: string): Promise<UserRecord | null>;

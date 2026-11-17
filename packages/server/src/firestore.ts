@@ -3,6 +3,7 @@ import { FieldValue, Firestore } from "@google-cloud/firestore";
 import type { UserRecord } from "./accounts.js";
 import type { KeyProvider, StoredKey } from "./keys.js";
 import type { SettingsLevel } from "./settings.js";
+import type { McpConnectionRecord } from "./mcp-oauth.js";
 import type { ConsentRecord, Invite, Participant, Room, Storage } from "./types.js";
 
 /** Firestore ids cannot hold arbitrary user ids, so hash the pair. */
@@ -46,6 +47,24 @@ export class FirestoreStorage implements Storage {
   async listKeys(ownerId: string): Promise<StoredKey[]> {
     const snap = await this.db.collection("users").doc(ownerId).collection("keys").get();
     return snap.docs.map((d) => d.data() as StoredKey);
+  }
+
+  async putMcpConnection(rec: McpConnectionRecord): Promise<void> {
+    await this.db.collection("mcpConnections").doc(rec.id).set(clean(rec));
+  }
+
+  async getMcpConnection(id: string): Promise<McpConnectionRecord | null> {
+    const snap = await this.db.collection("mcpConnections").doc(id).get();
+    return snap.exists ? (snap.data() as McpConnectionRecord) : null;
+  }
+
+  async listMcpConnections(ownerId: string): Promise<McpConnectionRecord[]> {
+    const snap = await this.db.collection("mcpConnections").where("ownerId", "==", ownerId).get();
+    return snap.docs.map((d) => d.data() as McpConnectionRecord);
+  }
+
+  async deleteMcpConnection(id: string): Promise<void> {
+    await this.db.collection("mcpConnections").doc(id).delete();
   }
 
   async upsertUser(user: UserRecord): Promise<UserRecord> {
