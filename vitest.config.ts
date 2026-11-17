@@ -5,6 +5,14 @@ export default defineConfig({
   resolve: {
     alias: [
       {
+        find: /^@openblah\/web\/react$/,
+        replacement: new URL("packages/web/src/react.ts", import.meta.url).pathname,
+      },
+      {
+        find: /^@openblah\/web$/,
+        replacement: new URL("packages/web/src/index.ts", import.meta.url).pathname,
+      },
+      {
         find: /^@openblah\/core\/react$/,
         replacement: new URL("packages/core/src/react.ts", import.meta.url).pathname,
       },

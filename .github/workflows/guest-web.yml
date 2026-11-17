@@ -1,0 +1,62 @@
+name: Guest page
+on:
+  pull_request:
+    paths: ["apps/guest-web/**", "packages/core/**", "packages/web/**", "firebase.json", ".github/workflows/guest-web.yml"]
+  push:
+    branches: [main]
+    paths: ["apps/guest-web/**", "packages/core/**", "packages/web/**", "firebase.json", ".github/workflows/guest-web.yml"]
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Needs the Firebase credentials; forks and unconfigured repos skip it.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build (preview: fake invite server, production: real server)
+        run: pnpm --filter @openblah/guest-web build
+        env:
+          # The preview build answers invite calls with fake data (token "demo"); production never does.
+          VITE_MOCK_SERVER: ${{ github.event_name == 'pull_request' && '1' || '' }}
+          VITE_OPENBLAH_API_URL: ${{ vars.OPENBLAH_API_URL }}
+          VITE_LIVEKIT_URL: ${{ vars.LIVEKIT_URL }}
+      - name: Deploy (preview channel per pull request, live on main)
+        id: firebase
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          projectId: ${{ vars.FIREBASE_PROJECT_ID || 'openblah' }}
+          channelId: ${{ github.event_name == 'push' && 'live' || '' }}
+      - name: Tell Viber the preview is ready
+        if: github.event_name == 'pull_request' && steps.firebase.outcome == 'success'
+        uses: kupferco/viber/.github/actions/report@main
+        with:
+          {
+            kind: preview,
+            url: "${{ steps.firebase.outputs.details_url }}/j/demo",
+            viber-url: "${{ secrets.VIBER_URL }}",
+            hook-secret: "${{ secrets.VIBER_HOOK_SECRET }}",
+          }
+      - name: Tell Viber how the production deploy went
+        if: github.event_name == 'push' && always()
+        uses: kupferco/viber/.github/actions/report@main
+        with:
+          {
+            kind: deploy,
+            env: prod,
+            outcome: "${{ job.status == 'success' && 'deployed' || 'failed' }}",
+            viber-url: "${{ secrets.VIBER_URL }}",
+            hook-secret: "${{ secrets.VIBER_HOOK_SECRET }}",
+          }
