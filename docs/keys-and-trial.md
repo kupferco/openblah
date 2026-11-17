@@ -28,6 +28,7 @@ environment keys, as before.
   responses. The only path to plaintext is `POST /internal/rooms/:id/provider-keys`, for the
   agent worker, authenticated with `OPENBLAH_AGENT_SECRET` (not an API key).
 - Used only for rooms the owner hosts.
+- MCP OAuth tokens (T15, [mcp-oauth.md](mcp-oauth.md)) are sealed with the same cipher and secret, so rotating `KEY_ENCRYPTION_SECRET` applies to them too (reconnect or re-seal before dropping the old secret).
 
 ## Trial
 

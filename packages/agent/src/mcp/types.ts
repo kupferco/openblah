@@ -8,6 +8,11 @@ export interface McpServerConfig {
    * their requests may trigger calls. Defaults to the room's `ownerId`.
    */
   ownerId?: string;
+  /**
+   * A saved OAuth connection of the owner. The token is fetched from the
+   * OpenBlah server when needed; it never travels in the room config.
+   */
+  connectionId?: string;
   /** Host-passed token of the embedding product's logged-in user, sent as the bearer token. */
   userToken?: string;
 }

@@ -16,6 +16,10 @@ Errors are `{ "error": "..." }` with 400 (bad input), 401 (no/wrong key), 403 (r
 
 The LiveKit token carries `{"role": ...}` as participant metadata. No role may change its own metadata; only the host gets `roomAdmin`; nobody gets recording rights.
 
+## MCP connections (T15)
+
+Per-user OAuth sign-in to MCP servers: `POST /users/:userId/mcp/connections`, `GET` (list and one), `POST …/:id/test`, `DELETE …/:id`, and the public `GET /mcp/callback`. See [mcp-oauth.md](mcp-oauth.md).
+
 ## Invites
 
 ### `POST /rooms/:id/invites` (host)
