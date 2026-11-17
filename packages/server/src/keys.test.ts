@@ -324,7 +324,7 @@ describe("accounts", () => {
 
   it("validates key input", async () => {
     const { call } = setup();
-    expect((await call("PUT", "/v1/users/u/keys/openai", { key: "k", tier: "paid" })).status).toBe(
+    expect((await call("PUT", "/v1/users/u/keys/bogus", { key: "k", tier: "paid" })).status).toBe(
       400,
     );
     expect((await call("PUT", "/v1/users/u/keys/gemini", { key: "k", tier: "gold" })).status).toBe(

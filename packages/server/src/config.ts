@@ -4,6 +4,7 @@ import { parseApiKeys } from "./auth.js";
 import { FirestoreStorage } from "./firestore.js";
 import { KeyCipher } from "./crypto.js";
 import { apiKeyId, KeyStore, parseProductKeys, type ProviderKeys } from "./keys.js";
+import { LLM_NAMES, type LlmName, type SettingsLevel } from "./settings.js";
 import { RealLiveKit } from "./livekit.js";
 import { HttpWorkerWaker } from "./worker.js";
 import { MemoryStorage } from "./storage.js";
@@ -58,6 +59,8 @@ export function createAppFromEnv(env: Env = process.env) {
       throw new Error(
         "OPENBLAH_SELF_HOSTED needs GEMINI_API_KEY, DEEPGRAM_API_KEY and CARTESIA_API_KEY",
       );
+    if (env.OPENAI_API_KEY) keys.openai = env.OPENAI_API_KEY;
+    if (env.ANTHROPIC_API_KEY) keys.claude = env.ANTHROPIC_API_KEY;
     productKeys["*"] = { keys, tier: env.OPENBLAH_SELF_HOSTED_TIER === "free" ? "free" : "paid" };
   }
 
@@ -85,8 +88,22 @@ export function createAppFromEnv(env: Env = process.env) {
     ? new FirebaseTokenVerifier(env.FIREBASE_PROJECT_ID)
     : undefined;
 
+  // The server-default level of the model setting, from the same variables the agent reads.
+  const llmProvider = env.OPENBLAH_LLM_PROVIDER;
+  const serverSettings: SettingsLevel | undefined = (LLM_NAMES as readonly string[]).includes(
+    llmProvider ?? "",
+  )
+    ? {
+        llm: {
+          provider: llmProvider as LlmName,
+          ...(env.OPENBLAH_LLM_MODEL ? { model: env.OPENBLAH_LLM_MODEL } : {}),
+        },
+      }
+    : undefined;
+
   return createApp({
     storage,
+    serverSettings,
     livekit,
     apiKeys,
     keyStore,

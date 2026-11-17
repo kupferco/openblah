@@ -1,5 +1,6 @@
 import type { UserRecord } from "./accounts.js";
-import type { Provider, StoredKey } from "./keys.js";
+import type { KeyProvider, StoredKey } from "./keys.js";
+import type { SettingsLevel } from "./settings.js";
 
 export type AgentMode = "on" | "off" | "ask";
 /** host and member are app users; guest joined through an invite link. */
@@ -16,6 +17,8 @@ export interface Room {
   metadata: Record<string, unknown>;
   /** MCP servers for the agent. Server-side only: holds user tokens, never sent to clients. */
   mcp?: Record<string, unknown>;
+  /** Room-level model and language (the top level of the three, T17). */
+  settings?: SettingsLevel;
   createdAt: string;
   /** Server-only: id of the API key that created the room (picks product keys). Never returned. */
   productKeyId?: string;
@@ -60,11 +63,14 @@ export interface Storage {
   getRoom(id: string): Promise<Room | null>;
   /** Saved BYOK keys (encrypted). */
   putKey(key: StoredKey): Promise<void>;
-  deleteKey(ownerId: string, provider: Provider): Promise<boolean>;
+  deleteKey(ownerId: string, provider: KeyProvider): Promise<boolean>;
   listKeys(ownerId: string): Promise<StoredKey[]>;
   /** Minimal user records for the standalone app. */
   upsertUser(user: UserRecord): Promise<UserRecord>;
   getUser(id: string): Promise<UserRecord | null>;
+  /** Settings saved at the user or product level, keyed by scope id (`user:<id>`, `product:<id>`). */
+  getSettings(scopeId: string): Promise<SettingsLevel | null>;
+  putSettings(scopeId: string, settings: SettingsLevel): Promise<void>;
   /** Trial usage counters (seconds), keyed by scope id. */
   getUsage(counterId: string): Promise<number>;
   /** Atomically add seconds; returns the new total. */
