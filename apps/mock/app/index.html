@@ -1,0 +1,430 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Standalone app · OpenBlah mock</title>
+    <link rel="stylesheet" href="../shared/base.css" />
+    <link rel="stylesheet" href="../shared/call.css" />
+    <style>
+      .list {
+        display: flex;
+        flex-direction: column;
+        gap: var(--ob-s3);
+      }
+      .item {
+        display: flex;
+        align-items: center;
+        gap: var(--ob-s3);
+        width: 100%;
+        text-align: left;
+        background: var(--ob-surface);
+        border: 1px solid var(--ob-border);
+        border-radius: var(--ob-r-md);
+        padding: var(--ob-s4);
+        min-height: var(--ob-tap);
+      }
+      .item .avatar {
+        width: 44px;
+        height: 44px;
+        font-size: var(--ob-fs-md);
+      }
+      .item .meta {
+        flex: 1;
+        min-width: 0;
+      }
+      .item .meta b {
+        display: block;
+      }
+      .tabs {
+        display: flex;
+        border-top: 1px solid var(--ob-border);
+        background: var(--ob-surface);
+      }
+      .tabs button {
+        flex: 1;
+        min-height: 56px;
+        background: none;
+        border: 0;
+        color: var(--ob-text-dim);
+        font-size: var(--ob-fs-sm);
+      }
+      .tabs button[aria-current="true"] {
+        color: var(--ob-primary);
+        font-weight: 700;
+      }
+      .fab {
+        position: sticky;
+        bottom: 0;
+      }
+      .sheet {
+        position: absolute;
+        inset: auto 0 0 0;
+        background: var(--ob-surface-2);
+        border-radius: var(--ob-r-lg) var(--ob-r-lg) 0 0;
+        padding: var(--ob-s5);
+        display: flex;
+        flex-direction: column;
+        gap: var(--ob-s3);
+        border-top: 1px solid var(--ob-border);
+        z-index: 5;
+      }
+      .toggle {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        min-height: var(--ob-tap);
+      }
+      @media (min-width: 900px) {
+        .phone {
+          max-width: 420px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage"><div class="phone" id="phone"></div></div>
+    <script src="../shared/mock.js"></script>
+    <script>
+      const { h, chrome, callView, CONSENT } = OB;
+      const s = {
+        screen: "home",
+        data: "some",
+        people: 3,
+        agent: "listening",
+        mutedOther: false,
+        selfMuted: false,
+        speaker: 1,
+        aiOnNewRoom: true,
+        sheet: false,
+        room: null,
+      };
+      const ROOMS = [
+        { id: "r1", name: "Family chat", who: "Mum, Maria", live: true, n: 2, ai: true },
+        {
+          id: "r2",
+          name: "Project sync",
+          who: "Tom, Ana",
+          live: false,
+          last: "Yesterday, 32 min",
+          ai: true,
+        },
+        { id: "r3", name: "Just us", who: "Maria", live: false, last: "Mon, 12 min", ai: false },
+      ];
+      const phone = document.getElementById("phone");
+      const tabs = () =>
+        h(
+          "div",
+          { class: "tabs" },
+          [
+            ["home", "Home"],
+            ["rooms", "Rooms"],
+            ["history", "History"],
+          ].map(([k, l]) =>
+            h(
+              "button",
+              {
+                "aria-current": String(s.screen === k),
+                onclick: () => {
+                  s.screen = k;
+                  s.sheet = false;
+                  render();
+                },
+              },
+              l,
+            ),
+          ),
+        );
+      const roomItem = (r) =>
+        h(
+          "button",
+          {
+            class: "item",
+            onclick: () => {
+              s.room = r;
+              s.screen = "room";
+              render();
+            },
+          },
+          h("div", { class: "avatar" }, r.name[0]),
+          h(
+            "div",
+            { class: "meta" },
+            h("b", {}, r.name),
+            h("span", { class: "small dim" }, r.who + (r.live ? "" : " · " + r.last)),
+          ),
+          r.live ? h("span", { class: "badge live" }, "Live") : "",
+          r.ai ? h("span", { class: "badge ai" }, "AI") : "",
+        );
+      function sheet() {
+        return h(
+          "div",
+          { class: "sheet" },
+          h("h2", {}, "Start a call"),
+          h("input", {
+            class: "field",
+            placeholder: "Room name (optional)",
+            "aria-label": "Room name",
+          }),
+          h(
+            "label",
+            { class: "toggle" },
+            h("span", {}, "Bring in the AI"),
+            h("input", {
+              type: "checkbox",
+              checked: s.aiOnNewRoom,
+              style: "width:22px;height:22px",
+              onchange: (e) => {
+                s.aiOnNewRoom = e.target.checked;
+                render();
+              },
+            }),
+          ),
+          s.aiOnNewRoom
+            ? h("div", { class: "notice" }, "Everyone sees this before joining: " + CONSENT)
+            : h("div", { class: "notice warn" }, "AI stays out. The room works as a normal call."),
+          h(
+            "button",
+            {
+              class: "btn primary block",
+              onclick: () => {
+                s.agent = s.aiOnNewRoom ? "listening" : "off";
+                s.people = 2;
+                s.screen = "call";
+                s.sheet = false;
+                render();
+              },
+            },
+            "Start",
+          ),
+          h(
+            "button",
+            {
+              class: "btn block",
+              onclick: () => {
+                s.sheet = false;
+                render();
+              },
+            },
+            "Cancel",
+          ),
+        );
+      }
+      function render() {
+        let body;
+        const empty = s.data === "empty";
+        if (s.screen === "call") {
+          body = [
+            h(
+              "div",
+              { class: "screen" },
+              callView(s, {
+                mute: () => {
+                  s.selfMuted = !s.selfMuted;
+                  render();
+                },
+                ai: () => {
+                  s.agent = s.agent === "off" ? "listening" : "off";
+                  render();
+                },
+                leave: () => {
+                  s.screen = "home";
+                  render();
+                },
+              }),
+            ),
+          ];
+        } else if (s.screen === "room") {
+          const r = s.room;
+          body = [
+            h(
+              "div",
+              { class: "screen" },
+              h(
+                "button",
+                {
+                  class: "btn",
+                  style: "align-self:flex-start;min-height:36px",
+                  onclick: () => {
+                    s.screen = "rooms";
+                    render();
+                  },
+                },
+                "← Back",
+              ),
+              h("h1", {}, r.name),
+              h("p", { class: "dim" }, r.who),
+              r.ai
+                ? h(
+                    "span",
+                    { class: "badge ai", style: "align-self:flex-start" },
+                    "AI on in this room",
+                  )
+                : h("span", { class: "badge", style: "align-self:flex-start" }, "AI off"),
+              r.ai ? h("div", { class: "notice" }, CONSENT) : "",
+              h(
+                "button",
+                {
+                  class: "btn",
+                  onclick: () => alert("Invite link copied (fake): openblah.example/j/abc123"),
+                },
+                "Copy invite link",
+              ),
+              h("div", { class: "spacer" }),
+              h(
+                "button",
+                {
+                  class: "btn primary block",
+                  onclick: () => {
+                    s.agent = r.ai ? "listening" : "off";
+                    s.people = r.live ? r.n + 1 : 2;
+                    s.screen = "call";
+                    render();
+                  },
+                },
+                r.live ? "Join call" : "Start call",
+              ),
+            ),
+          ];
+        } else if (s.screen === "history") {
+          body = [
+            h(
+              "div",
+              { class: "screen" },
+              h("h1", {}, "History"),
+              empty
+                ? h(
+                    "p",
+                    { class: "dim" },
+                    "Your finished calls and their summaries will show here.",
+                  )
+                : h(
+                    "div",
+                    { class: "list" },
+                    h(
+                      "div",
+                      { class: "card" },
+                      h("b", {}, "Project sync"),
+                      h("p", { class: "small dim" }, "Yesterday · Tom, Ana"),
+                      h(
+                        "p",
+                        { class: "small" },
+                        "Summary: agreed to ship the invite flow on Friday; Tom owns the consent text.",
+                      ),
+                    ),
+                    h(
+                      "div",
+                      { class: "card" },
+                      h("b", {}, "Just us"),
+                      h("p", { class: "small dim" }, "Mon · Maria"),
+                      h("p", { class: "small dim" }, "No notes: AI was off."),
+                    ),
+                  ),
+            ),
+          ];
+        } else {
+          const list =
+            s.screen === "rooms" ? ROOMS : ROOMS.filter((r) => r.live || s.screen === "home");
+          body = [
+            h(
+              "div",
+              { class: "screen" },
+              h("h1", {}, s.screen === "home" ? "Hi Dani" : "Rooms"),
+              s.screen === "home"
+                ? h("p", { class: "dim" }, "Tap to talk. Your room is always on.")
+                : "",
+              s.screen === "home"
+                ? h(
+                    "button",
+                    {
+                      class: "btn primary block",
+                      onclick: () => {
+                        s.sheet = true;
+                        render();
+                      },
+                    },
+                    "+ Start a call",
+                  )
+                : "",
+              h(
+                "h2",
+                { class: "small dim", style: "font-size:14px" },
+                s.screen === "home" ? "Happening now" : "Your rooms",
+              ),
+              empty
+                ? h("div", { class: "card dim" }, "No rooms yet. Start a call to create one.")
+                : h(
+                    "div",
+                    { class: "list" },
+                    (s.screen === "home" ? ROOMS.filter((r) => r.live) : ROOMS).map(roomItem),
+                  ),
+              s.screen === "home" && !empty
+                ? [
+                    h("h2", { class: "small dim", style: "font-size:14px" }, "Recent"),
+                    h("div", { class: "list" }, ROOMS.filter((r) => !r.live).map(roomItem)),
+                  ]
+                : "",
+            ),
+          ];
+          if (s.screen === "rooms")
+            body.push(
+              h(
+                "div",
+                { style: "padding:0 24px 16px" },
+                h(
+                  "button",
+                  {
+                    class: "btn primary block",
+                    onclick: () => {
+                      s.sheet = true;
+                      render();
+                    },
+                  },
+                  "+ New room",
+                ),
+              ),
+            );
+          body.push(tabs());
+        }
+        if (s.sheet) body.push(sheet());
+        phone.replaceChildren(...body);
+      }
+      chrome(
+        "Standalone app",
+        [
+          {
+            key: "data",
+            label: "Data",
+            options: [
+              ["some", "Rooms and calls"],
+              ["empty", "Empty (new user)"],
+            ],
+          },
+          {
+            key: "screen",
+            label: "Jump to",
+            options: [
+              ["home", "Home"],
+              ["rooms", "Rooms"],
+              ["history", "History"],
+              ["call", "In a call"],
+            ],
+          },
+          {
+            key: "agent",
+            label: "Agent state (in call)",
+            options: [
+              ["listening", "Listening"],
+              ["thinking", "Thinking"],
+              ["speaking", "Speaking"],
+              ["off", "AI off"],
+            ],
+          },
+        ],
+        s,
+        render,
+      );
+      render();
+    </script>
+  </body>
+</html>
