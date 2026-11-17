@@ -1,3 +1,7 @@
+import type { UserRecord } from "./accounts.js";
+import type { Provider, StoredKey } from "./keys.js";
+import type { McpConnectionRecord } from "./mcp-oauth.js";
+
 export type AgentMode = "on" | "off" | "ask";
 /** host and member are app users; guest joined through an invite link. */
 export type Role = "host" | "member" | "guest";
@@ -14,6 +18,9 @@ export interface Room {
   /** MCP servers for the agent. Server-side only: holds user tokens, never sent to clients. */
   mcp?: Record<string, unknown>;
   createdAt: string;
+  /** Server-only: id of the API key that created the room (picks product keys). Never returned. */
+  productKeyId?: string;
+
   /** Set when the host ends the room; no more tokens or invites. */
   endedAt?: string;
 }
@@ -52,6 +59,23 @@ export interface ConsentRecord {
 export interface Storage {
   createRoom(room: Room): Promise<void>;
   getRoom(id: string): Promise<Room | null>;
+  /** Saved BYOK keys (encrypted). */
+  putKey(key: StoredKey): Promise<void>;
+  deleteKey(ownerId: string, provider: Provider): Promise<boolean>;
+  listKeys(ownerId: string): Promise<StoredKey[]>;
+  /** MCP OAuth connections (tokens sealed). Callers check `ownerId`. */
+  putMcpConnection(rec: McpConnectionRecord): Promise<void>;
+  getMcpConnection(id: string): Promise<McpConnectionRecord | null>;
+  listMcpConnections(ownerId: string): Promise<McpConnectionRecord[]>;
+  deleteMcpConnection(id: string): Promise<void>;
+  /** Minimal user records for the standalone app. */
+  upsertUser(user: UserRecord): Promise<UserRecord>;
+  getUser(id: string): Promise<UserRecord | null>;
+  /** Trial usage counters (seconds), keyed by scope id. */
+  getUsage(counterId: string): Promise<number>;
+  /** Atomically add seconds; returns the new total. */
+  addUsage(counterId: string, seconds: number): Promise<number>;
+
   updateRoom(room: Room): Promise<void>;
 
   createInvite(invite: Invite): Promise<void>;
@@ -98,4 +122,13 @@ export interface LiveKitGateway {
     roomId: string,
     metadata: string,
   ): Promise<{ dispatchId: string; created: boolean }>;
+}
+
+/**
+ * Wakes the agent worker (a Cloud Run service with min instances 0) so it is
+ * registered with LiveKit by the time a dispatch arrives. No STT/LLM/TTS calls.
+ */
+export interface WorkerWaker {
+  /** Resolves true when the worker answered, false when it is not configured or unreachable. */
+  wake(): Promise<boolean>;
 }

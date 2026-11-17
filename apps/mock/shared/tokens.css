@@ -1,0 +1,42 @@
+/* OpenBlah design tokens. The one place for colours, type, spacing, radii.
+   The real UI tasks should copy these values (or import this file). */
+:root {
+  /* colour: surfaces */
+  --ob-bg: #0f1420;
+  --ob-surface: #182030;
+  --ob-surface-2: #212b40;
+  --ob-border: #2c3750;
+  /* colour: text */
+  --ob-text: #f2f5fb;
+  --ob-text-dim: #9aa6bf;
+  /* colour: brand and status */
+  --ob-primary: #6c8cff;
+  --ob-primary-text: #0b1030;
+  --ob-agent: #b48cff; /* the AI agent always uses this hue */
+  --ob-speaking: #38d39f;
+  --ob-danger: #ff5d6c;
+  --ob-warn: #ffb84d;
+
+  /* type */
+  --ob-font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --ob-fs-xs: 12px;
+  --ob-fs-sm: 14px;
+  --ob-fs-md: 16px;
+  --ob-fs-lg: 20px;
+  --ob-fs-xl: 28px;
+
+  /* spacing (4px scale) */
+  --ob-s1: 4px;
+  --ob-s2: 8px;
+  --ob-s3: 12px;
+  --ob-s4: 16px;
+  --ob-s5: 24px;
+  --ob-s6: 32px;
+
+  /* shape */
+  --ob-r-sm: 8px;
+  --ob-r-md: 14px;
+  --ob-r-lg: 22px;
+  --ob-r-pill: 999px;
+  --ob-tap: 48px; /* minimum touch target */
+}

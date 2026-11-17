@@ -17,8 +17,9 @@ import {
   DirectAgent,
   loadModels,
 } from "./pipeline.js";
+import { fetchMcpToken, fetchRoomKeys, reportUsage, UsageMeter } from "./keys.js";
 import { openMcpRoom, parseMcpConfig, type ActionLogEntry, type McpRoom } from "./mcp/index.js";
-import { defaultProviders } from "./providers/index.js";
+import { parseRoomProviders, providersFromLevels, withRoomKeys } from "./providers/index.js";
 import {
   agentNameFromMetadata,
   AI_PAUSED_ATTRIBUTE,
@@ -44,9 +45,20 @@ export default defineAgent({
     const env = configFromEnv();
     const models = ctx.proc.userData.models as Models;
     await ctx.connect();
+    const roomKeys = await fetchRoomKeys(ctx.room.name ?? "");
+    // Room choice (job metadata) beats the user/product level (passed by the host later, T17) and the server default.
+    const providers = providersFromLevels(
+      { room: parseRoomProviders(ctx.job.metadata) },
+      withRoomKeys(process.env, roomKeys?.keys),
+    );
+    const encoder = new TextEncoder();
+    const publish = (topic: string, payload: object) =>
+      ctx.room.localParticipant?.publishData(encoder.encode(JSON.stringify(payload)), {
+        reliable: true,
+        topic,
+      });
     // The room's own agent name wins over the environment default (Q1).
     const cfg = { ...env, agentName: agentNameFromMetadata(ctx.room.metadata, env.agentName) };
-    const providers = defaultProviders();
     const control: RoomControl = new RoomControl({
       agentName: cfg.agentName,
       hostIdentity: hostIdentityFromMetadata(ctx.room.metadata),
@@ -56,16 +68,12 @@ export default defineAgent({
     const mcpConfig = parseMcpConfig(ctx.job.metadata);
     let mcp: McpRoom | undefined;
     if (mcpConfig) {
-      const encoder = new TextEncoder();
-      const publish = (topic: string, payload: object) =>
-        ctx.room.localParticipant?.publishData(encoder.encode(JSON.stringify(payload)), {
-          reliable: true,
-          topic,
-        });
       mcp = await openMcpRoom({
         roomId: ctx.room.name ?? "",
         config: mcpConfig,
         provider: providers.llm,
+        fetchToken: (ownerId, connectionId, refresh) =>
+          fetchMcpToken(ctx.room.name ?? "", ownerId, connectionId, refresh),
         // The action log goes to the structured log; the room store comes with T13.
         log: { record: (e: ActionLogEntry) => writeLog({ event: "mcp_action", ...e }) },
         hooks: {
@@ -85,6 +93,22 @@ export default defineAgent({
     live.session = session;
     attachLatencyLogging(session, directAgent, ctx.room.name);
     await session.start({ agent: directAgent, room: ctx.room });
+    if (roomKeys?.mode === "trial") {
+      // The server counts the trial; the worker only reports seconds and stops when it is used up.
+      const meter = new UsageMeter();
+      session.on(voice.AgentSessionEventTypes.AgentStateChanged, (ev) =>
+        meter.setState(ev.newState),
+      );
+      const timer = setInterval(() => {
+        void reportUsage(ctx.room.name ?? "", meter.take()).then((more) => {
+          if (!more) void session.close();
+        });
+      }, 10_000);
+      ctx.addShutdownCallback(async () => {
+        clearInterval(timer);
+        await reportUsage(ctx.room.name ?? "", meter.take());
+      });
+    }
     writeLog({ event: "agent_joined", roomId: ctx.room.name });
 
     const local = ctx.room.localParticipant;
@@ -133,6 +157,10 @@ if (process.argv[1] === import.meta.filename) {
     new ServerOptions({
       agent: import.meta.filename,
       agentName: configFromEnv().dispatchName,
+      // Cloud Run sends requests (the server's warm-up) to $PORT; the worker's
+      // built-in HTTP server answers them and the request wakes the instance.
+      host: "0.0.0.0",
+      port: Number(process.env.PORT ?? 8081),
     }),
   );
 }
