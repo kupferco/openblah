@@ -1,10 +1,10 @@
 import { cartesiaTts } from "./cartesia.js";
 import { deepgramStt } from "./deepgram.js";
-import { geminiLlm } from "./gemini.js";
+import { DEFAULT_GEMINI_MODEL, geminiLlm, geminiThinkingConfig } from "./gemini.js";
 import type { ProviderSet } from "./types.js";
 
 export * from "./types.js";
-export { cartesiaTts, deepgramStt, geminiLlm };
+export { cartesiaTts, deepgramStt, DEFAULT_GEMINI_MODEL, geminiLlm, geminiThinkingConfig };
 
 type Env = Record<string, string | undefined>;
 
@@ -22,7 +22,7 @@ export function defaultProviders(
   }
   return {
     stt: deepgramStt({ apiKey: env.DEEPGRAM_API_KEY }),
-    llm: geminiLlm({ apiKey: env.GEMINI_API_KEY }),
+    llm: geminiLlm({ apiKey: env.GEMINI_API_KEY, model: env.GEMINI_MODEL }),
     tts: cartesiaTts({ apiKey: env.CARTESIA_API_KEY, voice: env.CARTESIA_VOICE_ID }),
   };
 }

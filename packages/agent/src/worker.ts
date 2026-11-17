@@ -9,7 +9,13 @@ import {
 } from "@livekit/agents";
 import { configFromEnv } from "./config.js";
 import { writeLog } from "./latency.js";
-import { attachLatencyLogging, buildSessionOptions, DirectAgent, loadModels } from "./pipeline.js";
+import {
+  attachLatencyLogging,
+  buildSessionOptions,
+  createTurnDetector,
+  DirectAgent,
+  loadModels,
+} from "./pipeline.js";
 import { fetchRoomKeys, reportUsage, UsageMeter } from "./keys.js";
 import { defaultProviders } from "./providers/index.js";
 
@@ -32,7 +38,7 @@ export default defineAgent({
     const roomKeys = await fetchRoomKeys(ctx.room.name ?? "");
     const providers = defaultProviders(process.env, roomKeys?.keys);
     const agent = new DirectAgent(cfg, providers.tts);
-    const options = buildSessionOptions(providers, models.vad, models.turnDetector);
+    const options = buildSessionOptions(providers, models.vad, createTurnDetector());
     agent.bindTts(options.tts as tts.TTS);
     const session = new voice.AgentSession(options);
     attachLatencyLogging(session, agent, ctx.room.name);
