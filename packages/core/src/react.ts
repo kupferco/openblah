@@ -59,6 +59,22 @@ export function useAgentState(): AgentState {
   return useSnapshot(useClient()).agentState;
 }
 
+/**
+ * Write actions the agent is waiting on (book, send, pay). Show `pending` as a
+ * confirmation card; `approve` / `decline` answer it. Only the owner of the
+ * tool credentials sees requests, and only their answer is accepted. They can
+ * also just say yes out loud.
+ */
+export function useToolApprovals() {
+  const client = useClient();
+  const s = useSnapshot(client);
+  return {
+    pending: s.approvals,
+    approve: (id: string) => client.respondToApproval(id, true),
+    decline: (id: string) => client.respondToApproval(id, false),
+  };
+}
+
 /** Local microphone state and controls. */
 export function useMute() {
   const client = useClient();

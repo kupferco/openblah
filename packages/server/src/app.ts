@@ -87,6 +87,24 @@ export function dispatchMetadataJson(room: Room): string {
   return JSON.stringify({ ...JSON.parse(roomMetadataJson(room)), mcp: room.mcp });
 }
 
+/** Data topic on which the server forwards approval decisions to the agent. */
+export const APPROVAL_DECISION_TOPIC = "openblah.approval.decision";
+
+/** Who owns tool credentials in a room: the host and each tool's `ownerId`. */
+function toolOwners(room: Room): Set<string> {
+  const owner = room.mcp?.ownerId;
+  const out = new Set<string>([typeof owner === "string" ? owner : room.hostUserId]);
+  for (const key of ["servers", "webhookTools"]) {
+    const list = room.mcp?.[key];
+    if (!Array.isArray(list)) continue;
+    for (const item of list) {
+      const o = (item as { ownerId?: unknown } | null)?.ownerId;
+      if (typeof o === "string") out.add(o);
+    }
+  }
+  return out;
+}
+
 export function createApp(deps: AppDeps): Hono {
   const { storage, livekit } = deps;
   const ttl = deps.tokenTtlSeconds ?? 600;
@@ -373,12 +391,35 @@ export function createApp(deps: AppDeps): Hono {
     return c.json(updated);
   });
 
-  // Stub until T13 (write-action confirmation) adds real pending actions.
+  /**
+   * Tapped or app-side approval of a write action the agent is waiting on.
+   * Only the owner of the tool credentials may approve: the host, or a member
+   * named as `ownerId` of one of the room's MCP servers. The server forwards the
+   * decision to the agent, which checks it again against the pending action.
+   */
   v1.post("/rooms/:id/approvals/:approvalId", async (c) => {
-    const body = (await readBody(c)) ?? {};
-    const room = await hostRoom(c, body);
+    const body = await readBody(c);
+    if (!body) return c.json({ error: "invalid JSON body" }, 400);
+    const room = await loadRoom(c);
     if (room instanceof Response) return room;
-    return c.json({ error: "tool approvals are not implemented yet" }, 501);
+    if (room.endedAt) return c.json({ error: "room has ended" }, 409);
+    const actor = actorOf(c, body);
+    const role = await roleOf(c, room, actor);
+    if (role instanceof Response) return role;
+    if (role === "guest" || !actor || !toolOwners(room).has(actor)) {
+      return c.json({ error: "only the owner of the tool credentials can approve" }, 403);
+    }
+    if (typeof body.approve !== "boolean") {
+      return c.json({ error: "approve must be a boolean" }, 400);
+    }
+    const approvalId = str(c.req.param("approvalId"), MAX_ID);
+    if (!approvalId) return c.json({ error: "approvalId is required" }, 400);
+    await livekit.sendData(
+      room.id,
+      APPROVAL_DECISION_TOPIC,
+      JSON.stringify({ approvalId, approve: body.approve, actorUserId: actor }),
+    );
+    return c.json({ approvalId, approve: body.approve, forwarded: true }, 202);
   });
 
   // ---- Consent ----

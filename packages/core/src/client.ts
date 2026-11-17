@@ -19,6 +19,23 @@ export interface ParticipantInfo {
   isMuted: boolean;
 }
 
+/** A write action the agent is waiting to run until its owner confirms. */
+export interface ToolApproval {
+  id: string;
+  /** Short label of what will run, e.g. "book table". */
+  tool: string;
+  /** What the agent will do, with the details. Show this to the person. */
+  summary: string;
+  /** Participant who owns the credentials. Only they can confirm. */
+  ownerId: string;
+  /** ISO time after which it lapses. */
+  expiresAt: string;
+}
+
+/** Data topic the agent publishes approval requests on, and the owner's answer goes back on. */
+export const APPROVAL_TOPIC = "openblah.approval";
+export const APPROVAL_RESPONSE_TOPIC = "openblah.approval.response";
+
 /** Everything a UI needs, as one immutable snapshot. */
 export interface ClientSnapshot {
   status: ConnectionStatus;
@@ -27,6 +44,8 @@ export interface ClientSnapshot {
   muted: boolean;
   /** The agent's state, or `unavailable` when no agent is in the room. */
   agentState: AgentState;
+  /** Write actions waiting for confirmation. Empty unless you own the tool credentials. */
+  approvals: ToolApproval[];
   error: string | null;
 }
 
@@ -113,9 +132,16 @@ export class OpenBlahClient {
     participants: [],
     muted: true,
     agentState: "unavailable",
+    approvals: [],
     error: null,
   };
   private readonly onRoomEvent = () => this.refresh();
+  private readonly onData = (
+    payload: Uint8Array,
+    participant?: Participant,
+    _kind?: unknown,
+    topic?: string,
+  ) => this.handleData(payload, participant, topic);
 
   constructor(options: OpenBlahClientOptions = {}) {
     this.beforeConnect = options.beforeConnect;
@@ -143,6 +169,7 @@ export class OpenBlahClient {
       room = this.createRoom();
       this.room = room;
       for (const e of ROOM_EVENTS) room.on(e, this.onRoomEvent);
+      room.on(RoomEvent.DataReceived, this.onData);
       await room.connect(serverUrl, token);
       await room.localParticipant.setMicrophoneEnabled(true);
     } catch (err) {
@@ -170,6 +197,7 @@ export class OpenBlahClient {
       participants: [],
       muted: true,
       agentState: "unavailable",
+      approvals: [],
     });
     this.emit("disconnected", undefined);
   }
@@ -188,6 +216,25 @@ export class OpenBlahClient {
     return next;
   }
 
+  /**
+   * Confirm (`approve: true`) or cancel a pending write action. Only the owner
+   * of the tool credentials is accepted; the agent checks who sent it.
+   */
+  async respondToApproval(id: string, approve: boolean): Promise<void> {
+    const room = this.room;
+    if (!room) return;
+    const agent = [...room.remoteParticipants.values()].find((p) => p.isAgent);
+    await room.localParticipant.publishData(
+      new TextEncoder().encode(JSON.stringify({ approvalId: id, approve })),
+      {
+        reliable: true,
+        topic: APPROVAL_RESPONSE_TOPIC,
+        ...(agent ? { destinationIdentities: [agent.identity] } : {}),
+      },
+    );
+    this.update({ approvals: this.snapshot.approvals.filter((a) => a.id !== id) });
+  }
+
   /** Subscribe to an event. Returns an unsubscribe function. */
   on<K extends keyof ClientEvents>(event: K, listener: Listener<ClientEvents[K]>): () => void {
     let set = this.listeners.get(event);
@@ -204,9 +251,41 @@ export class OpenBlahClient {
     }
   }
 
+  /** Only the agent's messages count; the agent decides who may see a request. */
+  private handleData(payload: Uint8Array, participant: Participant | undefined, topic?: string) {
+    if (topic !== APPROVAL_TOPIC || !participant?.isAgent) return;
+    let msg: { type?: string; id?: unknown } & Partial<ToolApproval>;
+    try {
+      msg = JSON.parse(new TextDecoder().decode(payload));
+    } catch {
+      return;
+    }
+    if (typeof msg.id !== "string") return;
+    const id = msg.id;
+    if (msg.type === "resolved") {
+      this.update({ approvals: this.snapshot.approvals.filter((a) => a.id !== id) });
+      return;
+    }
+    const me = this.room?.localParticipant.identity;
+    // Show the card only to the owner; anyone else cannot confirm anyway.
+    if (msg.type !== "request" || msg.ownerId !== me) return;
+    if (typeof msg.tool !== "string" || typeof msg.summary !== "string") return;
+    const approval: ToolApproval = {
+      id,
+      tool: msg.tool,
+      summary: msg.summary,
+      ownerId: msg.ownerId ?? "",
+      expiresAt: typeof msg.expiresAt === "string" ? msg.expiresAt : "",
+    };
+    this.update({
+      approvals: [...this.snapshot.approvals.filter((a) => a.id !== id), approval],
+    });
+  }
+
   private teardown(): void {
     if (!this.room) return;
     for (const e of ROOM_EVENTS) this.room.off(e, this.onRoomEvent);
+    this.room.off(RoomEvent.DataReceived, this.onData);
     this.room = null;
   }
 

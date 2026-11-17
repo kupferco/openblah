@@ -6,6 +6,7 @@ import {
   useMute,
   useParticipants,
   useRoom,
+  useToolApprovals,
 } from "../src/react.js";
 
 function Page() {
@@ -14,6 +15,7 @@ function Page() {
   const { status, error, connect, disconnect } = useRoom();
   const participants = useParticipants();
   const agent = useAgentState();
+  const { pending, approve, decline } = useToolApprovals();
   const { muted, toggle } = useMute();
   const joined = status === "connected";
 
@@ -54,6 +56,19 @@ function Page() {
       <p>
         Status: {status} · Agent: {agent}
       </p>
+      {pending.map((a) => (
+        <div
+          key={a.id}
+          role="alertdialog"
+          style={{ border: "2px solid #c80", padding: "0.5rem", margin: "0.5rem 0" }}
+        >
+          <strong>Confirm: {a.summary}</strong>
+          <div>
+            <button onClick={() => void approve(a.id)}>Yes, do it</button>{" "}
+            <button onClick={() => void decline(a.id)}>Cancel</button>
+          </div>
+        </div>
+      ))}
       {error && <p style={{ color: "crimson" }}>{error}</p>}
       <ul>
         {participants.map((p) => (

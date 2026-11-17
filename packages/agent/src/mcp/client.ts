@@ -19,7 +19,11 @@ export interface McpCallResult {
 /** A connection to one MCP server. */
 export interface McpConnection {
   listTools(): Promise<McpToolInfo[]>;
-  callTool(name: string, args: Record<string, unknown>): Promise<McpCallResult>;
+  callTool(
+    name: string,
+    args: Record<string, unknown>,
+    meta?: { approvalId?: string },
+  ): Promise<McpCallResult>;
   close(): Promise<void>;
 }
 

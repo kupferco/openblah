@@ -55,14 +55,14 @@ Sends the agent into the room. 409 if the room's agent is `off`, or if any curre
 
 ## Host controls
 
-| Method and path                             | Who  | Notes                                                                                                                       |
-| ------------------------------------------- | ---- | --------------------------------------------------------------------------------------------------------------------------- |
-| `PUT /rooms/:id/agent`                      | host | Body `actorUserId`, `agent`. Updates the room and LiveKit room metadata.                                                    |
-| `DELETE /rooms/:id/participants/:userId`    | host | Removes from LiveKit and bars new tokens. The host cannot be removed.                                                       |
-| `POST /rooms/:id/end`                       | host | Deletes the LiveKit room; later tokens and invites are refused. Idempotent.                                                 |
-| `POST /rooms/:id/approvals/:approvalId`     | host | Stub: always 501 until T13 adds write-action confirmation.                                                                  |
-| `GET /rooms/:id/participants?viewerUserId=` | any  | Guests do not see `contact`; hosts and members do. Removed users are not listed.                                            |
-| `GET /rooms/:id/permissions?userId=`        | any  | `{ role, canInvokeTools, canChangeAgentMode, canSeeContacts, isHost }`. The agent uses it to refuse tool calls from guests. |
+| Method and path                             | Who        | Notes                                                                                                                                                                                              |
+| ------------------------------------------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PUT /rooms/:id/agent`                      | host       | Body `actorUserId`, `agent`. Updates the room and LiveKit room metadata.                                                                                                                           |
+| `DELETE /rooms/:id/participants/:userId`    | host       | Removes from LiveKit and bars new tokens. The host cannot be removed.                                                                                                                              |
+| `POST /rooms/:id/end`                       | host       | Deletes the LiveKit room; later tokens and invites are refused. Idempotent.                                                                                                                        |
+| `POST /rooms/:id/approvals/:approvalId`     | tool owner | Body `actorUserId`, `approve` (boolean). Only the host or an `ownerId` named in the room's `mcp` config; guests and others get 403. Forwards the decision to the agent (202). See `docs/tools.md`. |
+| `GET /rooms/:id/participants?viewerUserId=` | any        | Guests do not see `contact`; hosts and members do. Removed users are not listed.                                                                                                                   |
+| `GET /rooms/:id/permissions?userId=`        | any        | `{ role, canInvokeTools, canChangeAgentMode, canSeeContacts, isHost }`. The agent uses it to refuse tool calls from guests.                                                                        |
 
 ## Guest rights
 

@@ -7,6 +7,7 @@ import {
   type tts,
   voice,
 } from "@livekit/agents";
+import { RoomEvent } from "@livekit/rtc-node";
 import { configFromEnv } from "./config.js";
 import { writeLog } from "./latency.js";
 import {
@@ -42,7 +43,7 @@ export default defineAgent({
         reliable: true,
         topic,
       });
-    const live: { session?: voice.AgentSession } = {};
+    const live: { session?: voice.AgentSession; userTurns: number } = { userTurns: 0 };
     const mcpConfig = parseMcpConfig(ctx.job.metadata);
     let mcp: McpRoom | undefined;
     if (mcpConfig) {
@@ -50,7 +51,7 @@ export default defineAgent({
         roomId: ctx.room.name ?? "",
         config: mcpConfig,
         provider: providers.llm,
-        // The action log goes to the structured log; the room store comes with T13.
+        // The action log goes to the structured log (with confirmation evidence).
         log: { record: (e: ActionLogEntry) => writeLog({ event: "mcp_action", ...e }) },
         hooks: {
           // Direct mode: the one human in the room.
@@ -58,7 +59,20 @@ export default defineAgent({
           sayHold: () => void live.session?.say("One moment."),
           setWorking: (working, label) => publish("openblah.working", { working, label }),
           showNote: (note) => publish("openblah.note", note),
+          userTurnCount: () => live.userTurns,
+          showApproval: (req) => publish("openblah.approval", { type: "request", ...req }),
+          resolveApproval: (id, status) =>
+            publish("openblah.approval", { type: "resolved", id, status }),
+          announce: (text) => void live.session?.say(text),
         },
+      });
+      const decoder = new TextDecoder();
+      ctx.room.on(RoomEvent.DataReceived, (payload, participant, _kind, topic) => {
+        void mcp
+          ?.handleData({ topic, payload: decoder.decode(payload), sender: participant?.identity })
+          .catch((err) =>
+            console.error(JSON.stringify({ event: "approval_failed", err: String(err) })),
+          );
       });
       ctx.addShutdownCallback(async () => mcp?.close());
     }
@@ -67,6 +81,9 @@ export default defineAgent({
     agent.bindTts(options.tts as tts.TTS);
     const session = new voice.AgentSession(options);
     live.session = session;
+    session.on(voice.AgentSessionEventTypes.UserInputTranscribed, (ev) => {
+      if (ev.isFinal) live.userTurns += 1;
+    });
     attachLatencyLogging(session, agent, ctx.room.name);
     await session.start({ agent, room: ctx.room });
     writeLog({ event: "agent_joined", roomId: ctx.room.name });
