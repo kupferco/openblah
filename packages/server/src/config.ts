@@ -2,6 +2,7 @@ import { createApp } from "./app.js";
 import { parseApiKeys } from "./auth.js";
 import { FirestoreStorage } from "./firestore.js";
 import { RealLiveKit } from "./livekit.js";
+import { HttpWorkerWaker } from "./worker.js";
 import { MemoryStorage } from "./storage.js";
 import type { Storage } from "./types.js";
 
@@ -32,6 +33,9 @@ export function createAppFromEnv(env: Env = process.env) {
     storage,
     livekit,
     apiKeys,
+    worker: env.AGENT_WORKER_URL
+      ? new HttpWorkerWaker(env.AGENT_WORKER_URL, env.AGENT_WORKER_AUTH === "iam")
+      : undefined,
     livekitUrl: env.LIVEKIT_URL,
     ...(env.OPENBLAH_INVITE_BASE_URL ? { inviteBaseUrl: env.OPENBLAH_INVITE_BASE_URL } : {}),
     ...(env.OPENBLAH_AGENT_NAME ? { agentName: env.OPENBLAH_AGENT_NAME } : {}),

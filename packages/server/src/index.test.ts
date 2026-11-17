@@ -15,7 +15,16 @@ function setup() {
     sendData: vi.fn(async () => {}),
     dispatchAgent: vi.fn(async () => ({ dispatchId: "AD_1", created: true })),
   };
-  const app = createApp({ storage: new MemoryStorage(), livekit, apiKeys: [KEY, "other"] });
+  let t = 1_000_000;
+  const worker = { wake: vi.fn(async () => true) };
+  const app = createApp({
+    storage: new MemoryStorage(),
+    livekit,
+    apiKeys: [KEY, "other"],
+    worker,
+    nowMs: () => t,
+  });
+  const advance = (ms: number) => (t += ms);
   const call = (method: string, path: string, body?: unknown, key: string | null = KEY) =>
     app.request(path, {
       method,
@@ -25,7 +34,7 @@ function setup() {
       },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-  return { livekit, call };
+  return { livekit, call, worker, advance };
 }
 
 const host = { hostUserId: "u1", hostDisplayName: "Dani" };
@@ -49,6 +58,7 @@ describe("auth", () => {
       expect((await call("GET", "/v1/rooms/x", undefined, key)).status).toBe(401);
       expect((await call("POST", "/v1/tokens", {}, key)).status).toBe(401);
       expect((await call("POST", "/v1/rooms/x/agent", {}, key)).status).toBe(401);
+      expect((await call("POST", "/v1/warmup", { userId: "u" }, key)).status).toBe(401);
     }
     expect(livekit.createRoom).not.toHaveBeenCalled();
   });
@@ -185,5 +195,56 @@ describe("agent dispatch", () => {
     };
     expect((await call("POST", `/v1/rooms/${room.id}/agent`)).status).toBe(409);
     expect(livekit.dispatchAgent).not.toHaveBeenCalled();
+  });
+});
+
+describe("warmup", () => {
+  it("wakes the worker only, idempotently", async () => {
+    const { call, worker, livekit, advance } = setup();
+    const r = await call("POST", "/v1/warmup", { userId: "u1" });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ status: "warming" });
+    expect(worker.wake).toHaveBeenCalledTimes(1);
+    expect(await (await call("POST", "/v1/warmup", { userId: "u1" })).json()).toEqual({
+      status: "warm",
+    });
+    expect(worker.wake).toHaveBeenCalledTimes(1);
+    advance(11_000);
+    await call("POST", "/v1/warmup", { userId: "u1" });
+    expect(worker.wake).toHaveBeenCalledTimes(2);
+    expect(livekit.dispatchAgent).not.toHaveBeenCalled();
+    expect(livekit.createRoom).not.toHaveBeenCalled();
+  });
+
+  it("validates input", async () => {
+    const { call } = setup();
+    expect((await call("POST", "/v1/warmup", {})).status).toBe(400);
+  });
+
+  it("rate limits per user", async () => {
+    const { call, advance } = setup();
+    for (let i = 0; i < 6; i++)
+      expect((await call("POST", "/v1/warmup", { userId: "a" })).status).toBe(200);
+    const limited = await call("POST", "/v1/warmup", { userId: "a" });
+    expect(limited.status).toBe(429);
+    expect(limited.headers.get("Retry-After")).toBeTruthy();
+    expect((await call("POST", "/v1/warmup", { userId: "b" })).status).toBe(200);
+    advance(61_000);
+    expect((await call("POST", "/v1/warmup", { userId: "a" })).status).toBe(200);
+  });
+
+  it("reports unavailable when the worker cannot be reached", async () => {
+    const { call, worker } = setup();
+    worker.wake.mockResolvedValueOnce(false);
+    expect(await (await call("POST", "/v1/warmup", { userId: "u" })).json()).toEqual({
+      status: "unavailable",
+    });
+  });
+
+  it("wakes the worker before dispatching the agent", async () => {
+    const { call, worker } = setup();
+    const room = (await (await call("POST", "/v1/rooms", host)).json()) as { id: string };
+    expect((await call("POST", `/v1/rooms/${room.id}/agent`, {})).status).toBe(201);
+    expect(worker.wake).toHaveBeenCalledTimes(1);
   });
 });
