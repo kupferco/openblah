@@ -15,3 +15,24 @@ LiveKit Agents (TypeScript) worker: joins a room and runs STT → LLM → TTS fo
 2. `pnpm --filter @openblah/agent dev` (worker registers as `openblah-agent`; first run downloads the turn detector model, or run `pnpm --filter @openblah/agent build && pnpm --filter @openblah/agent download-files`).
 3. `pnpm --filter @openblah/server dev`, create a room (`POST /v1/rooms`), mint a token (`POST /v1/tokens`), join on the `@openblah/web` dev page.
 4. Dispatch the agent: `curl -X POST -H "Authorization: Bearer $KEY" localhost:8080/v1/rooms/<id>/agent`.
+
+## MCP tools (T12)
+
+The agent is an MCP client (`src/mcp`): Streamable HTTP with SSE fallback, no stdio. Pass `mcp` when creating a room (`POST /v1/rooms`); the server keeps it private and hands it to the agent in the dispatch metadata:
+
+```json
+{
+  "mcp": {
+    "servers": [
+      { "id": "hk", "url": "https://example.com/mcp", "userToken": "<logged-in user's token>" }
+    ],
+    "allowTools": ["get_weather"]
+  }
+}
+```
+
+- `userToken` is sent as the bearer token (no OAuth screen). `ownerId` defaults to the host; a tool call runs only when its owner asked.
+- `allowTools` limits which tools the model sees. Schemas are converted per provider (`LlmProvider.formatToolSchema`, Gemini first).
+- Only tools with `readOnlyHint: true` run; everything else is blocked until T13 adds confirmation.
+- Long results go to the screen as a data message on topic `openblah.note`; slow tools publish `openblah.working` and the agent says a short hold line. Tool names are never spoken.
+- Action log (who asked, tool, arguments, status) is written as `mcp_action` log lines. Storing it with the room comes with T13's approval endpoint.

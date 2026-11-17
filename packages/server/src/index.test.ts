@@ -153,6 +153,22 @@ describe("agent dispatch", () => {
     expect(livekit.dispatchAgent).toHaveBeenCalledWith(room.id, expect.any(String));
   });
 
+  it("passes MCP config to the agent only, never to clients", async () => {
+    const { call, livekit } = setup();
+    const mcp = { servers: [{ id: "a", url: "https://x/mcp", userToken: "secret-tok" }] };
+    const res = await call("POST", "/v1/rooms", { ...host, mcp });
+    const room = (await res.json()) as { id: string };
+    expect(JSON.stringify(room)).not.toContain("secret-tok");
+    expect(JSON.stringify(vi.mocked(livekit.createRoom).mock.calls)).not.toContain("secret-tok");
+    expect(JSON.stringify(await (await call("GET", `/v1/rooms/${room.id}`)).json())).not.toContain(
+      "secret-tok",
+    );
+    await call("POST", `/v1/rooms/${room.id}/agent`);
+    const meta = JSON.parse(vi.mocked(livekit.dispatchAgent).mock.calls[0]![1]);
+    expect(meta.mcp.servers[0].userToken).toBe("secret-tok");
+    expect(meta.mcp.ownerId).toBe(host.hostUserId);
+  });
+
   it("returns 200 when the agent is already there", async () => {
     const { call, livekit } = setup();
     vi.mocked(livekit.dispatchAgent).mockResolvedValueOnce({ dispatchId: "AD_1", created: false });

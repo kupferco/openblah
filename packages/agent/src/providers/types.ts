@@ -20,6 +20,11 @@ export interface LlmProvider {
   readonly name: string;
   /** Create the streaming chat model (tool calls, usage, cancel). */
   createLlm(): llm.LLM;
+  /**
+   * Convert an MCP tool's JSON schema to what this model accepts as function
+   * parameters (each model supports a different subset of JSON Schema).
+   */
+  formatToolSchema?(schema: Record<string, unknown>): Record<string, unknown>;
 }
 
 export interface TtsProvider {

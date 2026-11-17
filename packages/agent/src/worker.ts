@@ -17,6 +17,7 @@ import {
   DirectAgent,
   loadModels,
 } from "./pipeline.js";
+import { openMcpRoom, parseMcpConfig, type ActionLogEntry, type McpRoom } from "./mcp/index.js";
 import { defaultProviders } from "./providers/index.js";
 import {
   agentNameFromMetadata,
@@ -51,10 +52,37 @@ export default defineAgent({
       hostIdentity: hostIdentityFromMetadata(ctx.room.metadata),
       getLanguage: () => directAgent.language,
     });
-    const directAgent = new DirectAgent(cfg, providers.tts, control.tools());
+    const live: { session?: voice.AgentSession } = {};
+    const mcpConfig = parseMcpConfig(ctx.job.metadata);
+    let mcp: McpRoom | undefined;
+    if (mcpConfig) {
+      const encoder = new TextEncoder();
+      const publish = (topic: string, payload: object) =>
+        ctx.room.localParticipant?.publishData(encoder.encode(JSON.stringify(payload)), {
+          reliable: true,
+          topic,
+        });
+      mcp = await openMcpRoom({
+        roomId: ctx.room.name ?? "",
+        config: mcpConfig,
+        provider: providers.llm,
+        // The action log goes to the structured log; the room store comes with T13.
+        log: { record: (e: ActionLogEntry) => writeLog({ event: "mcp_action", ...e }) },
+        hooks: {
+          // Direct mode: the one human in the room.
+          currentSpeaker: () => [...ctx.room.remoteParticipants.values()][0]?.identity,
+          sayHold: () => void live.session?.say("One moment."),
+          setWorking: (working, label) => publish("openblah.working", { working, label }),
+          showNote: (note) => publish("openblah.note", note),
+        },
+      });
+      ctx.addShutdownCallback(async () => mcp?.close());
+    }
+    const directAgent = new DirectAgent(cfg, providers.tts, { ...control.tools(), ...mcp?.tools });
     const options = buildSessionOptions(providers, models.vad, createTurnDetector());
     directAgent.bindTts(options.tts as tts.TTS);
     const session = new voice.AgentSession(options);
+    live.session = session;
     attachLatencyLogging(session, directAgent, ctx.room.name);
     await session.start({ agent: directAgent, room: ctx.room });
     writeLog({ event: "agent_joined", roomId: ctx.room.name });

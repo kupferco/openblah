@@ -2,6 +2,7 @@ import { type llm, type tts, voice } from "@livekit/agents";
 import * as silero from "@livekit/agents-plugin-silero";
 import * as livekitPlugin from "@livekit/agents-plugin-livekit";
 import { type AgentConfig, directInstructions } from "./config.js";
+import { MCP_INSTRUCTIONS } from "./mcp/tools.js";
 import { detectLanguage } from "./language.js";
 import { buildTurnLatencyLog, type TurnMetrics, writeLog } from "./latency.js";
 import type { ProviderSet, SpokenLanguage, TtsProvider } from "./providers/types.js";
@@ -17,9 +18,13 @@ export class DirectAgent extends voice.Agent {
   constructor(
     cfg: Pick<AgentConfig, "agentName">,
     private readonly ttsProvider: TtsProvider,
-    tools?: voice.AgentOptions<unknown>["tools"],
+    tools?: llm.ToolContextLike,
   ) {
-    super({ instructions: directInstructions(cfg), tools });
+    const hasTools = !!tools && Object.keys(tools).length > 0;
+    super({
+      instructions: directInstructions(cfg) + (hasTools ? ` ${MCP_INSTRUCTIONS}` : ""),
+      ...(hasTools ? { tools } : {}),
+    });
   }
 
   /** The session's TTS engine, so language changes reach it (the agent itself holds none). */
