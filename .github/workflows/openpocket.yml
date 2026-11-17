@@ -10,6 +10,7 @@ on:
       branch: { description: feat/ branch to create, required: true, type: string }
       brief: { description: The agreed brief, required: true, type: string }
       base: { description: Branch to start from instead of the default branch, required: false, default: '', type: string }
+      ai_resolve: { description: Let a focused AI session resolve conflicts the script cannot, required: false, default: 'true', type: string }
       web_tools: { description: Let the session search and fetch web pages, required: false, default: 'true', type: string }
 
 permissions:
@@ -369,8 +370,83 @@ jobs:
           fi
           FILES="$(printf '%s' "$RESULT" | jq -r '[.unresolved[].file] | join(", ")')"
           RISKY="$(printf '%s' "$RESULT" | jq -r 'if (.risky | length) > 0 then "true" else "false" end')"
+          # Real logic conflicts go to a small AI session, once per run, at most 2 rounds in total
+          # (earlier resolutions on this branch count), never with risky files in the mix.
+          ROUNDS="$(git log --format=%s "$PRE" | grep -c "resolve conflicts with $BASE" || true)"
+          if [ "$RISKY" = false ] && [ "$ROUNDS" -lt 2 ] && [ "${{ inputs.ai_resolve }}" != "false" ]; then
+            LIST="$(echo "$FILES" | tr -d ',')"
+            snap() { { git status --porcelain -uall | grep -v '^UU\|^AA\|^DU\|^UD\|^AU\|^UA\|^DD' | awk '{print $2}' | grep -vxF -f <(printf '%s\n' $LIST) | while read -r P; do [ -f "$P" ] && printf '%s %s\n' "$(git hash-object "$P")" "$P"; done; } | sort; }
+            snap > "$RUNNER_TEMP/openpocket-snap.txt"
+            echo "pre=$PRE" >> "$GITHUB_OUTPUT"
+            echo "msg=$MSG" >> "$GITHUB_OUTPUT"
+            echo "round=$((ROUNDS + 1))" >> "$GITHUB_OUTPUT"
+            out needs_ai "Conflict in $FILES, handed to a focused AI session" false "$FILES"
+            exit 0
+          fi
           git merge --abort 2>/dev/null || git reset --hard "$PRE"
           out failed "Could not sync with $BASE: $FILES conflict and need a person or a coding session" "$RISKY" "$FILES"
+
+      # Part 3 of the conflict strategy: a small session that sees only the conflicted files.
+      # The merge is still open; the next step checks the result and drops it if anything is off.
+      - name: Resolve conflicts with AI
+        id: airesolve
+        if: steps.sync.outputs.status == 'needs_ai'
+        continue-on-error: true
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: |
+            The branch is in the middle of merging ${{ github.event.repository.default_branch }} (see git status) and these files conflict: ${{ steps.sync.outputs.files }}.
+            Resolve ONLY the conflict hunks in those files, so both sides' intent is kept. The brief of this task is in
+            ${{ runner.temp }}/openpocket-brief.md. Look at what main changed with git log and git diff for those files only.
+            Do not change any other file, do not refactor, do not touch database schema, auth, secrets or deploy config.
+            Remove every conflict marker and git add the files. Do not commit; do not run git merge --abort.
+            If you cannot decide what is right, leave the file conflicted and say why in one sentence.
+            Write one line per resolved hunk to ${{ runner.temp }}/openpocket-resolution.md as "file: what you kept and why".
+          claude_args: >-
+            --allowedTools "Bash,Read,Write,Edit,MultiEdit,Glob,Grep"
+            --max-turns 40
+
+      - name: Check the AI resolution
+        id: aifinish
+        if: always() && steps.sync.outputs.status == 'needs_ai'
+        run: |
+          out() { echo "status=$1" >> "$GITHUB_OUTPUT"; echo "note=$2" >> "$GITHUB_OUTPUT"; echo "$2"; }
+          PRE="${{ steps.sync.outputs.pre }}"
+          FILES="${{ steps.sync.outputs.files }}"
+          LIST="$(echo "$FILES" | tr -d ',')"
+          BASE="${{ github.event.repository.default_branch }}"
+          snap() { { git status --porcelain -uall | grep -v '^UU\|^AA\|^DU\|^UD\|^AU\|^UA\|^DD' | awk '{print $2}' | grep -vxF -f <(printf '%s\n' $LIST) | while read -r P; do [ -f "$P" ] && printf '%s %s\n' "$(git hash-object "$P")" "$P"; done; } | sort; }
+          drop() { git merge --abort 2>/dev/null || true; git reset --hard "$PRE"; out failed "Could not sync with $BASE: $FILES conflict and the AI could not resolve it ($1), so the merge was dropped"; }
+          # Tokens used by the session, from its execution file.
+          EXEC="${{ steps.airesolve.outputs.execution_file }}"
+          if [ -n "$EXEC" ] && [ -f "$EXEC" ]; then
+            echo "tokens=$(jq -r '[.. | objects | select(.type? == "result")] | last | ((.usage.input_tokens // 0) + (.usage.output_tokens // 0) + (.usage.cache_creation_input_tokens // 0) + (.usage.cache_read_input_tokens // 0))' "$EXEC" 2>/dev/null || echo 0)" >> "$GITHUB_OUTPUT"
+          fi
+          [ "${{ steps.airesolve.outcome }}" = success ] || { drop "the session failed"; exit 0; }
+          # Bounded: only files that were in conflict may differ from the merge result, none may be risky or still conflicted.
+          git diff --name-only --diff-filter=U | grep -q . && { drop "files were left conflicted"; exit 0; }
+          # Bounded: everything outside the conflicted files must be exactly as the merge left it.
+          if [ "$(snap)" != "$(cat "$RUNNER_TEMP/openpocket-snap.txt")" ]; then drop "it changed a file that was not in conflict"; exit 0; fi
+          if printf '%s\n' $LIST | grep -Eiq '(^|/)(schema\.sql|schema\.hcl|atlas\.hcl|atlas\.sum)$|(^|/)migrations?/|\.sql$|(^|/)(auth|oauth|session|login|passport|jwt)[^/]*\.|(^|/)(\.env|[^/]*secrets?[^/]*|[^/]*credentials?[^/]*)|^\.github/workflows/|Dockerfile'; then drop "a risky file"; exit 0; fi
+          if grep -lE '^(<<<<<<<|>>>>>>>) ' $LIST 2>/dev/null | grep -q .; then drop "conflict markers remain"; exit 0; fi
+          # The hunks as resolved, kept for the task's History (trimmed).
+          git diff --cc -- $LIST 2>/dev/null | head -c 6000 > "$RUNNER_TEMP/openpocket-hunks.txt" || true
+          git add -A -- $LIST
+          git commit -m "OpenPocket #${{ inputs.task_id }}: resolve conflicts with $BASE" -m "Resolved by AI in: $FILES" >/dev/null
+          CHECKS=ok
+          if [ -f package.json ]; then
+            if [ ! -d node_modules ]; then npm ci --no-audit --no-fund || CHECKS=failed; fi
+            for S in typecheck test build; do
+              [ "$CHECKS" = ok ] || break
+              if jq -e --arg s "$S" '.scripts[$s]' package.json >/dev/null; then npm run -s "$S" || CHECKS=failed; fi
+            done
+          fi
+          [ "$CHECKS" = ok ] || { drop "the checks failed afterwards"; exit 0; }
+          out resolved "Resolved by AI, look at it: fixed a conflict in $FILES"
+          DELIM="openpocket_$RANDOM$RANDOM"
+          { echo "hunks<<$DELIM"; cat "$RUNNER_TEMP/openpocket-hunks.txt" 2>/dev/null; echo; echo "$DELIM"; } >> "$GITHUB_OUTPUT"
 
       - name: Push the branch
         id: push
@@ -419,6 +495,11 @@ jobs:
           SYNC_NOTE: ${{ steps.sync.outputs.note }}
           SYNC_RISKY: ${{ steps.sync.outputs.risky }}
           SYNC_FILES: ${{ steps.sync.outputs.files }}
+          AI_STATUS: ${{ steps.aifinish.outputs.status }}
+          AI_NOTE: ${{ steps.aifinish.outputs.note }}
+          AI_HUNKS: ${{ steps.aifinish.outputs.hunks }}
+          AI_TOKENS: ${{ steps.aifinish.outputs.tokens }}
+          AI_ROUND: ${{ steps.sync.outputs.round }}
           EXEC_FILE: ${{ steps.claude.outputs.execution_file }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
@@ -437,8 +518,9 @@ jobs:
             --arg task "${{ inputs.task_id }}" --arg outcome "$OUTCOME" \
             --arg pushed "${PUSHED:-false}" --arg run "$RUN_URL" --arg summary "$SUMMARY" \
             --arg pushError "$PUSH_ERROR" --arg final "$FINAL" \
-            --arg syncStatus "$SYNC_STATUS" --arg syncNote "$SYNC_NOTE" --arg syncRisky "$SYNC_RISKY" --arg syncFiles "$SYNC_FILES" \
-            '{syncStatus:$syncStatus, syncNote:$syncNote, syncRisky:($syncRisky=="true"), syncFiles:($syncFiles | split(", ") | map(select(. != "")))} + {repo:$repo, branch:$branch, taskId:($task|tonumber), outcome:$outcome, pushed:($pushed=="true"), pushError:$pushError, runUrl:$run, summary:$summary, finalAnswer:$final}' \
+            --arg syncStatus "${AI_STATUS:-$SYNC_STATUS}" --arg syncNote "${AI_NOTE:-$SYNC_NOTE}" --arg syncRisky "$SYNC_RISKY" --arg syncFiles "$SYNC_FILES" \
+            --arg aiHunks "$AI_HUNKS" --arg aiTokens "${AI_TOKENS:-0}" --arg aiRound "${AI_ROUND:-0}" --arg aiUsed "$([ -n "$AI_STATUS" ] && echo true || echo false)" \
+            '{aiResolved:($aiUsed=="true"), aiHunks:$aiHunks, aiTokens:($aiTokens|tonumber? // 0), aiRound:($aiRound|tonumber? // 0), syncStatus:$syncStatus, syncNote:$syncNote, syncRisky:($syncRisky=="true"), syncFiles:($syncFiles | split(", ") | map(select(. != "")))} + {repo:$repo, branch:$branch, taskId:($task|tonumber), outcome:$outcome, pushed:($pushed=="true"), pushError:$pushError, runUrl:$run, summary:$summary, finalAnswer:$final}' \
           | curl -fsS -X POST "$OPENPOCKET_URL/hooks/run" \
               -H "Authorization: Bearer $OPENPOCKET_HOOK_SECRET" \
               -H "Content-Type: application/json" --data-binary @-

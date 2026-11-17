@@ -6,6 +6,7 @@ LiveKit Agents (TypeScript) worker: joins a room and runs STT → LLM → TTS fo
 - Turn handling: Silero VAD + LiveKit's multilingual turn detector, barge-in after 300 ms of overlapping speech (the unspoken rest is dropped), short "mm-hm" backchannels do not interrupt (the agent resumes).
 - Replies: 1–3 sentences; the reply language follows the speaker (English or Portuguese).
 - State: LiveKit publishes `lk.agent.state` on the agent participant; `useAgentState` in `@openblah/web` reads it.
+- Consent and controls (`src/room-control.ts`, T11): says "<agent name> is here and listening" on entry and again when someone joins (or that it is paused). The agent name comes from the room metadata (default `Blah`). A `pause_ai` data message (topic `openblah.control`) from anyone stops all listening and sets the `openblah.ai_paused` attribute on the agent, which every client shows; the host or the person who paused can resume. Voice tools: `stop_listening_or_leave` ("stop listening" pauses, "leave" leaves) and `invite_participant` ("invite my mother"), which sends an `invite_request` to the host's app only and waits for its `invite_response`.
 - Latency: one JSON log line per reply, `{"event":"turn_latency","endOfSpeechToFirstAudioMs":...}`.
 
 ## Run locally
