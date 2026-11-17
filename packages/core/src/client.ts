@@ -1,10 +1,31 @@
 import { Room, RoomEvent, ConnectionState, type Participant } from "livekit-client";
+import {
+  OpenBlahApi,
+  type ConsentGrant,
+  type ConsentStatus,
+  type CreateInviteOptions,
+  type Invite,
+  type InvitePreview,
+  type OpenBlahApiOptions,
+  type RoomParticipant,
+} from "./api.js";
+import {
+  AI_PAUSED_ATTRIBUTE,
+  CONTROL_TOPIC,
+  encodeControlMessage,
+  parseControlMessage,
+  roleFromMetadata,
+  type ControlMessage,
+  type InviteRequestMessage,
+  type Role,
+} from "./protocol.js";
 
 /**
  * State of the agent as shown to the user. `muted` is the local user's mic state
- * and wins over the agent's own state, so a UI can show one indicator.
+ * and wins over the agent's own state, so a UI can show one indicator. `paused`
+ * means someone paused the AI: it is not listening to anyone.
  */
-export type AgentState = "listening" | "thinking" | "speaking" | "muted" | "unavailable";
+export type AgentState = "listening" | "thinking" | "speaking" | "muted" | "paused" | "unavailable";
 
 /** Connection state of the client. */
 export type ConnectionStatus = "disconnected" | "connecting" | "connected" | "reconnecting";
@@ -15,6 +36,8 @@ export interface ParticipantInfo {
   name: string;
   isLocal: boolean;
   isAgent: boolean;
+  /** From the token the server issued. The agent has no role and shows as `guest`; check `isAgent`. */
+  role: Role;
   isSpeaking: boolean;
   isMuted: boolean;
 }
@@ -27,6 +50,13 @@ export interface ClientSnapshot {
   muted: boolean;
   /** The agent's state, or `unavailable` when no agent is in the room. */
   agentState: AgentState;
+  /** True while the AI is paused: it listens to nobody. Show this to everyone. */
+  aiPaused: boolean;
+  /** Room id and your user id, once connected. */
+  roomId: string | null;
+  userId: string | null;
+  /** Your role in the room, or null when not connected. */
+  role: Role | null;
   error: string | null;
 }
 
@@ -37,6 +67,12 @@ export interface ClientEvents {
   connected: void;
   disconnected: void;
   error: Error;
+  /**
+   * The agent was asked to invite someone ("Blah, invite my mother") and needs the
+   * host app to pick the contact. Only fires for the host. Show a contact picker or
+   * share sheet, then call `respondToInviteRequest`.
+   */
+  inviteRequest: InviteRequestMessage;
 }
 
 /** Attribute the LiveKit agent publishes its state under. */
@@ -52,6 +88,7 @@ export function deriveAgentState(
 ): AgentState {
   if (muted) return "muted";
   if (!agent) return "unavailable";
+  if (agent.attributes[AI_PAUSED_ATTRIBUTE] === "true") return "paused";
   switch (agent.attributes[AGENT_STATE_ATTRIBUTE]) {
     case "thinking":
       return "thinking";
@@ -65,7 +102,14 @@ export function deriveAgentState(
 /** The part of the LiveKit `Room` the client uses. Lets tests pass a fake. */
 export type RoomLike = Pick<
   Room,
-  "connect" | "disconnect" | "on" | "off" | "localParticipant" | "remoteParticipants" | "state"
+  | "connect"
+  | "disconnect"
+  | "on"
+  | "off"
+  | "localParticipant"
+  | "remoteParticipants"
+  | "state"
+  | "name"
 >;
 
 /** Options for {@link OpenBlahClient}. */
@@ -79,6 +123,13 @@ export interface OpenBlahClientOptions {
   beforeConnect?: () => Promise<void>;
   /** Runs after the room is left, on disconnect or a failed connect. Errors are ignored. */
   afterDisconnect?: () => Promise<void>;
+  /**
+   * The OpenBlah server, for invites, consent and host controls. Pass options, or a
+   * ready {@link OpenBlahApi}. Without it those methods throw.
+   */
+  api?: OpenBlahApi | OpenBlahApiOptions;
+  /** LiveKit URL to use when joining by invite and the server does not return one. */
+  livekitUrl?: string;
 }
 
 type Listener<T> = (payload: T) => void;
@@ -107,19 +158,42 @@ export class OpenBlahClient {
   private readonly createRoom: () => RoomLike;
   private readonly beforeConnect?: () => Promise<void>;
   private readonly afterDisconnect?: () => Promise<void>;
+  private readonly api?: OpenBlahApi;
+  private readonly livekitUrl?: string;
   private listeners = new Map<keyof ClientEvents, Set<Listener<never>>>();
   private snapshot: ClientSnapshot = {
     status: "disconnected",
     participants: [],
     muted: true,
     agentState: "unavailable",
+    aiPaused: false,
+    roomId: null,
+    userId: null,
+    role: null,
     error: null,
   };
   private readonly onRoomEvent = () => this.refresh();
+  private readonly onData = (
+    payload: Uint8Array,
+    participant?: Participant,
+    _kind?: unknown,
+    topic?: string,
+  ) => {
+    if (topic !== CONTROL_TOPIC) return;
+    const msg = parseControlMessage(payload);
+    // Only the agent may ask the host to invite someone; a guest must not be able to fake it.
+    if (msg?.type === "invite_request" && participant?.isAgent && this.snapshot.role === "host") {
+      this.emit("inviteRequest", msg);
+    }
+  };
 
   constructor(options: OpenBlahClientOptions = {}) {
     this.beforeConnect = options.beforeConnect;
     this.afterDisconnect = options.afterDisconnect;
+    this.livekitUrl = options.livekitUrl;
+    if (options.api) {
+      this.api = options.api instanceof OpenBlahApi ? options.api : new OpenBlahApi(options.api);
+    }
     this.createRoom =
       options.createRoom ?? (() => new Room({ adaptiveStream: true, dynacast: true }));
   }
@@ -143,6 +217,7 @@ export class OpenBlahClient {
       room = this.createRoom();
       this.room = room;
       for (const e of ROOM_EVENTS) room.on(e, this.onRoomEvent);
+      room.on(RoomEvent.DataReceived, this.onData);
       await room.connect(serverUrl, token);
       await room.localParticipant.setMicrophoneEnabled(true);
     } catch (err) {
@@ -170,6 +245,10 @@ export class OpenBlahClient {
       participants: [],
       muted: true,
       agentState: "unavailable",
+      aiPaused: false,
+      roomId: null,
+      userId: null,
+      role: null,
     });
     this.emit("disconnected", undefined);
   }
@@ -186,6 +265,108 @@ export class OpenBlahClient {
     const next = !this.snapshot.muted;
     await this.setMuted(next);
     return next;
+  }
+
+  // ---- Invites, consent and host controls (T11) ----
+
+  /**
+   * Join a room from an invite link as a guest and connect. `consent` is what the
+   * guest agreed to: show them {@link getInvitePreview}'s `consent.text` first and pass
+   * its `version` as `textVersion`. Pass `null` only when the room's AI is off (the server
+   * refuses otherwise). Rejects with `OpenBlahApiError` (404 for any
+   * invalid, expired or used-up invite).
+   */
+  async joinWithInvite(
+    token: string,
+    displayName: string,
+    consent: ConsentGrant | null,
+  ): Promise<void> {
+    const join = await this.requireApi().joinWithInvite(token, displayName, consent);
+    const url = join.livekitUrl ?? this.livekitUrl;
+    if (!url)
+      throw new Error("No LiveKit URL: the server sent none and no livekitUrl option is set");
+    await this.connect(url, join.token);
+  }
+
+  /** What a guest should see before joining: host name, agent name and the consent text. */
+  async getInvitePreview(token: string): Promise<InvitePreview> {
+    return this.requireApi().getInvite(token);
+  }
+
+  /** Host: create an invite link for this room (for example to copy or share). */
+  async createInvite(options?: CreateInviteOptions): Promise<Invite> {
+    const { roomId, userId } = this.requireSession();
+    return this.requireApi().createInvite(roomId, userId, options);
+  }
+
+  /** Host: make an invite link stop working. */
+  async revokeInvite(inviteId: string): Promise<void> {
+    const { roomId, userId } = this.requireSession();
+    await this.requireApi().revokeInvite(roomId, inviteId, userId);
+  }
+
+  /** Host: remove someone from the room. */
+  async removeParticipant(userId: string): Promise<void> {
+    const s = this.requireSession();
+    await this.requireApi().removeParticipant(s.roomId, userId, s.userId);
+  }
+
+  /** Host: end the room for everyone. */
+  async endRoom(): Promise<void> {
+    const { roomId, userId } = this.requireSession();
+    await this.requireApi().endRoom(roomId, userId);
+  }
+
+  /** Everyone in the room per the server (guests do not see contact details). */
+  async listParticipants(): Promise<RoomParticipant[]> {
+    const { roomId, userId } = this.requireSession();
+    return this.requireApi().listParticipants(roomId, userId);
+  }
+
+  /** The consent text for this room and who has not consented yet. */
+  async getConsent(): Promise<ConsentStatus> {
+    const { roomId, userId } = this.requireSession();
+    return this.requireApi().getConsent(roomId, userId);
+  }
+
+  /** Record that you accept the consent text (`version` from {@link getConsent}). */
+  async giveConsent(version: string): Promise<void> {
+    const { roomId, userId } = this.requireSession();
+    await this.requireApi().giveConsent(roomId, userId, version);
+  }
+
+  /**
+   * Pause or resume the AI for everyone. While paused the agent listens to nobody and
+   * `aiPaused` is true in every client. Anyone can pause; only the host or the person
+   * who paused can resume. Resolves when the request is sent; the state changes when
+   * the agent confirms it.
+   */
+  async setAiPaused(paused: boolean): Promise<void> {
+    await this.sendControl({ type: "pause_ai", paused });
+  }
+
+  /** Host: tell the agent what happened to an `inviteRequest` ("sent" once a link was shared). */
+  async respondToInviteRequest(requestId: string, status: "sent" | "declined"): Promise<void> {
+    await this.sendControl({ type: "invite_response", requestId, status });
+  }
+
+  private async sendControl(msg: ControlMessage): Promise<void> {
+    if (!this.room) throw new Error("Not connected");
+    await this.room.localParticipant.publishData(encodeControlMessage(msg), {
+      reliable: true,
+      topic: CONTROL_TOPIC,
+    });
+  }
+
+  private requireApi(): OpenBlahApi {
+    if (!this.api) throw new Error("Pass `api` to OpenBlahClient to use invites and consent");
+    return this.api;
+  }
+
+  private requireSession(): { roomId: string; userId: string } {
+    const { roomId, userId } = this.snapshot;
+    if (!roomId || !userId) throw new Error("Not connected");
+    return { roomId, userId };
   }
 
   /** Subscribe to an event. Returns an unsubscribe function. */
@@ -207,6 +388,7 @@ export class OpenBlahClient {
   private teardown(): void {
     if (!this.room) return;
     for (const e of ROOM_EVENTS) this.room.off(e, this.onRoomEvent);
+    this.room.off(RoomEvent.DataReceived, this.onData);
     this.room = null;
   }
 
@@ -232,6 +414,10 @@ export class OpenBlahClient {
       participants,
       muted,
       agentState: deriveAgentState(agent, muted),
+      aiPaused: agent?.attributes[AI_PAUSED_ATTRIBUTE] === "true",
+      roomId: room.name,
+      userId: local.identity,
+      role: roleFromMetadata(local.metadata),
     });
   }
 }
@@ -256,6 +442,7 @@ function toInfo(p: Participant): ParticipantInfo {
     name: p.name || p.identity,
     isLocal: p.isLocal,
     isAgent: p.isAgent,
+    role: roleFromMetadata(p.metadata),
     isSpeaking: p.isSpeaking,
     isMuted: !p.isMicrophoneEnabled,
   };

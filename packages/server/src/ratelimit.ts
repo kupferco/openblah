@@ -1,26 +1,34 @@
-/** Fixed-window in-memory limiter, per key. Per instance: enough for a cheap ping. */
+/** Fixed-window in-memory limiter. Per instance, which is fine as a brake on guessing. */
 export class RateLimiter {
   private readonly hits = new Map<string, { start: number; count: number }>();
 
   constructor(
-    private readonly limit: number,
+    private readonly max: number,
     private readonly windowMs: number,
-    private readonly now: () => number = Date.now,
+    private readonly clock: () => number = Date.now,
   ) {}
+
+  /** Returns true when the call is allowed. */
+  allow(key: string, nowMs: number = this.clock()): boolean {
+    if (this.hits.size > 10_000) this.sweep(nowMs);
+    const h = this.hits.get(key);
+    if (!h || nowMs - h.start >= this.windowMs) {
+      this.hits.set(key, { start: nowMs, count: 1 });
+      return true;
+    }
+    h.count += 1;
+    return h.count <= this.max;
+  }
 
   /** Returns 0 if allowed (and counts the hit), else the ms to wait. */
   check(key: string): number {
-    const t = this.now();
-    if (this.hits.size > 10_000) {
-      for (const [k, v] of this.hits) if (t - v.start >= this.windowMs) this.hits.delete(k);
-    }
+    const t = this.clock();
+    if (this.allow(key, t)) return 0;
     const h = this.hits.get(key);
-    if (!h || t - h.start >= this.windowMs) {
-      this.hits.set(key, { start: t, count: 1 });
-      return 0;
-    }
-    if (h.count >= this.limit) return this.windowMs - (t - h.start);
-    h.count++;
-    return 0;
+    return h ? Math.max(1, this.windowMs - (t - h.start)) : 0;
+  }
+
+  private sweep(nowMs: number): void {
+    for (const [k, h] of this.hits) if (nowMs - h.start >= this.windowMs) this.hits.delete(k);
   }
 }
