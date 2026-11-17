@@ -604,7 +604,10 @@ export function createApp(deps: AppDeps): Hono {
     if (room.agent === "off") return c.json({ error: "agent is off for this room" }, 409);
     // Make sure the worker is up (cold start); the call works as a plain room until it joins.
     await worker.wake().catch(() => false);
-    const { dispatchId, created } = await livekit.dispatchAgent(room.id, dispatchMetadataJson(room));
+    const { dispatchId, created } = await livekit.dispatchAgent(
+      room.id,
+      dispatchMetadataJson(room),
+    );
     return c.json({ roomId: room.id, dispatchId, created }, created ? 201 : 200);
   });
 
