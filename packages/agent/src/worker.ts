@@ -19,7 +19,7 @@ import {
 } from "./pipeline.js";
 import { fetchRoomKeys, reportUsage, UsageMeter } from "./keys.js";
 import { openMcpRoom, parseMcpConfig, type ActionLogEntry, type McpRoom } from "./mcp/index.js";
-import { defaultProviders } from "./providers/index.js";
+import { parseRoomProviders, providersFromLevels, withRoomKeys } from "./providers/index.js";
 import {
   agentNameFromMetadata,
   AI_PAUSED_ATTRIBUTE,
@@ -46,7 +46,11 @@ export default defineAgent({
     const models = ctx.proc.userData.models as Models;
     await ctx.connect();
     const roomKeys = await fetchRoomKeys(ctx.room.name ?? "");
-    const providers = defaultProviders(process.env, roomKeys?.keys);
+    // Room choice (job metadata) beats the user/product level (passed by the host later, T17) and the server default.
+    const providers = providersFromLevels(
+      { room: parseRoomProviders(ctx.job.metadata) },
+      withRoomKeys(process.env, roomKeys?.keys),
+    );
     const encoder = new TextEncoder();
     const publish = (topic: string, payload: object) =>
       ctx.room.localParticipant?.publishData(encoder.encode(JSON.stringify(payload)), {
