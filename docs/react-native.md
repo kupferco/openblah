@@ -66,6 +66,28 @@ The example's `tsconfig.json` maps `@openblah/*` to source for `pnpm typecheck` 
 
 Android: `npx expo run:android` works the same way (not tested yet).
 
+## Invites, consent and host controls
+
+Pass `api` so the client can call the OpenBlah server. The server API key belongs to your backend: point `baseUrl` at a proxy there that adds it (or return it from `headers` in a trusted environment). The guest calls (`getInvitePreview`, `joinWithInvite`) need no key.
+
+```ts
+const client = new OpenBlahClient({ api: { baseUrl: "https://your-backend.example/openblah/v1" } });
+```
+
+| Hook / method                                 | What it does                                                                                                                                             |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `useRole()`                                   | `host`, `member`, `guest` or null. Each `ParticipantInfo` also has a `role`.                                                                             |
+| `useHostControls()`                           | `isHost`, `createInvite`, `revokeInvite`, `removeParticipant`, `endRoom` (the server rejects non-hosts).                                                 |
+| `useInviteJoin(token)`                        | Guest side: `preview` (host name, agent name, consent text and version), `join(displayName, accepted)`. Consent is required unless the room's AI is off. |
+| `useConsent()`                                | For someone already in the room: `needed`, `text`, `accept()`.                                                                                           |
+| `useAiPause()`                                | `paused` (true for everyone while the AI is paused), `setPaused`, `toggle`. Anyone can pause; the host or the person who paused can resume.              |
+| `useInviteRequests(handler)`                  | Host only: called when the agent was told "Blah, invite my mother". Show a contact picker or share sheet and resolve `"sent"` or `"declined"`.           |
+| `client.joinWithInvite(token, name, consent)` | Same as `useInviteJoin`'s `join`, without React. Needs `livekitUrl` in the options if the server sends none.                                             |
+
+While the AI is paused `useAgentState()` is `paused` and the agent says so aloud to anyone who joins.
+
+Mid-call invite: `shareInvite(host)` creates a link and opens the system share sheet. It resolves `{ invite, shared }`; `shared` is false if the sheet was dismissed (consider revoking the link). Universal links for opening invites in the app come with T26.
+
 ## Checks in CI
 
 `pnpm typecheck` compiles the SDK and the example app against the SDK source, so the example is checked in CI without a native build. `pnpm test` runs the hook tests (in `packages/core`), the audio and client tests with a mocked native layer, and the config plugin tests.
