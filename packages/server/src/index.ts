@@ -44,3 +44,10 @@ export type { TokenVerifier, UserRecord, VerifiedUser } from "./accounts.js";
 export { OpenBlahServerClient } from "./client.js";
 export { HttpWorkerWaker, NoopWaker } from "./worker.js";
 export { RateLimiter } from "./ratelimit.js";
+export { McpOAuthService, McpOAuthError, parsePreregistered } from "./mcp-oauth.js";
+export type {
+  McpConnectionInfo,
+  McpConnectionRecord,
+  McpConnectionStatus,
+  McpOAuthOptions,
+} from "./mcp-oauth.js";

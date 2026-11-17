@@ -60,6 +60,29 @@ export interface ConsentStatus extends ConsentText {
   missing: { userId: string; displayName: string }[];
 }
 
+/** A saved MCP server connection. Tokens are never returned. */
+export interface McpConnection {
+  id: string;
+  serverUrl: string;
+  name: string;
+  /** `pending` until the person has consented in the browser. */
+  status: "pending" | "connected" | "error";
+  error?: string;
+  scope?: string;
+  createdAt: string;
+  connectedAt?: string;
+}
+
+export interface StartMcpConnectionOptions {
+  /** The person's id in your product. Leave out for the standalone app (Firebase sign-in). */
+  userId?: string;
+  name?: string;
+  /** Only the scopes you need; the server's own default when left out. */
+  scope?: string;
+  /** Where the browser goes after consent. Must be allowed in the server's settings. */
+  returnUrl?: string;
+}
+
 export interface OpenBlahApiOptions {
   /** Server base URL including `/v1`, e.g. `https://api.example.com/v1`. */
   baseUrl: string;
@@ -165,6 +188,44 @@ export class OpenBlahApi {
     return this.call<GuestJoin>("POST", `/invites/${enc(token)}/join`, {
       body: consent ? { displayName, consent } : { displayName },
     });
+  }
+
+  // ---- MCP connections (OAuth) ----
+
+  private mcpBase(userId?: string): string {
+    return userId ? `/users/${enc(userId)}/mcp/connections` : "/me/mcp/connections";
+  }
+
+  /** Start connecting an MCP server; open `authorizationUrl` for the person to consent. */
+  startMcpConnection(url: string, opts: StartMcpConnectionOptions = {}) {
+    const { userId, ...rest } = opts;
+    return this.call<{ id: string; authorizationUrl: string }>("POST", this.mcpBase(userId), {
+      body: { url, ...rest },
+      auth: true,
+    });
+  }
+
+  listMcpConnections(userId?: string) {
+    return this.call<{ connections: McpConnection[] }>("GET", this.mcpBase(userId), {
+      auth: true,
+    }).then((r) => r.connections);
+  }
+
+  getMcpConnection(id: string, userId?: string) {
+    return this.call<McpConnection>("GET", `${this.mcpBase(userId)}/${enc(id)}`, { auth: true });
+  }
+
+  testMcpConnection(id: string, userId?: string) {
+    return this.call<{ ok: boolean; message: string }>(
+      "POST",
+      `${this.mcpBase(userId)}/${enc(id)}/test`,
+      { auth: true },
+    );
+  }
+
+  /** Disconnect; the server deletes the stored tokens. */
+  async disconnectMcp(id: string, userId?: string): Promise<void> {
+    await this.call<null>("DELETE", `${this.mcpBase(userId)}/${enc(id)}`, { auth: true });
   }
 
   private async call<T>(

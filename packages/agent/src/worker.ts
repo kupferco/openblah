@@ -17,7 +17,7 @@ import {
   DirectAgent,
   loadModels,
 } from "./pipeline.js";
-import { fetchRoomKeys, reportUsage, UsageMeter } from "./keys.js";
+import { fetchMcpToken, fetchRoomKeys, reportUsage, UsageMeter } from "./keys.js";
 import { openMcpRoom, parseMcpConfig, type ActionLogEntry, type McpRoom } from "./mcp/index.js";
 import { defaultProviders } from "./providers/index.js";
 import {
@@ -68,6 +68,8 @@ export default defineAgent({
         roomId: ctx.room.name ?? "",
         config: mcpConfig,
         provider: providers.llm,
+        fetchToken: (ownerId, connectionId, refresh) =>
+          fetchMcpToken(ctx.room.name ?? "", ownerId, connectionId, refresh),
         // The action log goes to the structured log; the room store comes with T13.
         log: { record: (e: ActionLogEntry) => writeLog({ event: "mcp_action", ...e }) },
         hooks: {
