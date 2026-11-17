@@ -104,10 +104,17 @@ export function attachLatencyLogging(
   });
 }
 
-/** Load the heavy models once per worker process. */
+/** Load the heavy models once per worker process (prewarm). Only VAD: it needs no job. */
 export async function loadModels() {
   return {
     vad: await silero.VAD.load(),
-    turnDetector: new livekitPlugin.turnDetector.MultilingualModel(),
   };
+}
+
+/**
+ * The turn detector needs a job context ("no job context found" otherwise), so
+ * create it inside the job entrypoint, never in prewarm.
+ */
+export function createTurnDetector() {
+  return new livekitPlugin.turnDetector.MultilingualModel();
 }

@@ -9,7 +9,13 @@ import {
 } from "@livekit/agents";
 import { configFromEnv } from "./config.js";
 import { writeLog } from "./latency.js";
-import { attachLatencyLogging, buildSessionOptions, DirectAgent, loadModels } from "./pipeline.js";
+import {
+  attachLatencyLogging,
+  buildSessionOptions,
+  createTurnDetector,
+  DirectAgent,
+  loadModels,
+} from "./pipeline.js";
 import { openMcpRoom, parseMcpConfig, type ActionLogEntry, type McpRoom } from "./mcp/index.js";
 import { defaultProviders } from "./providers/index.js";
 
@@ -57,7 +63,7 @@ export default defineAgent({
       ctx.addShutdownCallback(async () => mcp?.close());
     }
     const agent = new DirectAgent(cfg, providers.tts, mcp?.tools);
-    const options = buildSessionOptions(providers, models.vad, models.turnDetector);
+    const options = buildSessionOptions(providers, models.vad, createTurnDetector());
     agent.bindTts(options.tts as tts.TTS);
     const session = new voice.AgentSession(options);
     live.session = session;
