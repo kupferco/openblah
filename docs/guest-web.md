@@ -25,5 +25,5 @@ Build-time settings: `VITE_OPENBLAH_API_URL` (server base incl. `/v1`, default `
 **Dani: manual steps**
 
 1. Create the Firebase project and the `openblah` Hosting site so `openblah.web.app` exists (or tell us the real site ID and update `site` in `firebase.json` and `projectId`).
-2. Add the repo secret `FIREBASE_SERVICE_ACCOUNT` (service account JSON with Firebase Hosting Admin) and, if the project ID is not `openblah`, the variable `FIREBASE_PROJECT_ID`. Set the variables `OPENBLAH_API_URL` and `LIVEKIT_URL` for production builds. The server must allow CORS from the site.
+2. Add the repo secret `FIREBASE_SERVICE_ACCOUNT` (service account JSON with Firebase Hosting Admin; until it exists the deploy step is skipped, not failed) and, if the project ID is not `openblah`, the variable `FIREBASE_PROJECT_ID`. Set the variables `OPENBLAH_API_URL` and `LIVEKIT_URL` for production builds. The server must allow CORS from the site.
 3. Test in desktop Chrome, Safari and Firefox with a real invite from the `@openblah/web` dev page.
