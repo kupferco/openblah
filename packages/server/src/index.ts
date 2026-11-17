@@ -16,4 +16,7 @@ export type {
   Room,
   Storage,
   TokenRequest,
+  WorkerWaker,
 } from "./types.js";
+export { HttpWorkerWaker, NoopWaker } from "./worker.js";
+export { RateLimiter } from "./ratelimit.js";
