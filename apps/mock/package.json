@@ -1,0 +1,10 @@
+{
+  "name": "@openblah/mock",
+  "private": true,
+  "version": "0.0.0",
+  "license": "MIT",
+  "description": "Static clickable design mock. Open index.html; no build, no server calls.",
+  "scripts": {
+    "typecheck": "echo 'static mock, nothing to typecheck'"
+  }
+}
