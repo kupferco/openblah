@@ -9,6 +9,7 @@ export default tseslint.config(
       "**/node_modules/**",
       "**/coverage/**",
       "apps/example/{ios,android,.expo}/**",
+      "apps/mock/**", // static browser-only design mock
     ],
   },
   js.configs.recommended,

@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Call screen · OpenBlah mock</title>
+    <link rel="stylesheet" href="../shared/base.css" />
+    <link rel="stylesheet" href="../shared/call.css" />
+    <style>
+      @media (min-width: 900px) {
+        .phone {
+          max-width: 760px;
+          border-radius: var(--ob-r-lg);
+        }
+        .people {
+          gap: var(--ob-s5);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage">
+      <div class="phone"><div class="screen" id="host"></div></div>
+    </div>
+    <script src="../shared/mock.js"></script>
+    <script>
+      const { chrome, callView, h } = OB;
+      const s = {
+        people: 3,
+        agent: "listening",
+        mutedOther: false,
+        selfMuted: false,
+        speaker: 1,
+        left: false,
+      };
+      const host = document.getElementById("host");
+      function render() {
+        if (s.left) {
+          host.replaceChildren(
+            h(
+              "div",
+              {
+                style:
+                  "flex:1;display:flex;flex-direction:column;justify-content:center;gap:16px;text-align:center",
+              },
+              h("h1", {}, "You left the call"),
+              h("p", { class: "dim" }, "Transcript and summary will appear in the call history."),
+              h(
+                "button",
+                {
+                  class: "btn primary",
+                  onclick: () => {
+                    s.left = false;
+                    render();
+                  },
+                },
+                "Rejoin",
+              ),
+            ),
+          );
+          return;
+        }
+        host.replaceChildren(
+          callView(s, {
+            mute: () => {
+              s.selfMuted = !s.selfMuted;
+              render();
+              ui.redraw();
+            },
+            ai: () => {
+              s.agent = s.agent === "off" ? "listening" : "off";
+              render();
+              ui.redraw();
+            },
+            leave: () => {
+              s.left = true;
+              render();
+            },
+          }),
+        );
+      }
+      const ui = chrome(
+        "Call screen",
+        [
+          {
+            key: "people",
+            label: "People in the call (plus the agent)",
+            options: [
+              [2, "2"],
+              [3, "3"],
+              [4, "4"],
+            ],
+          },
+          {
+            key: "agent",
+            label: "Agent state",
+            options: [
+              ["listening", "Listening"],
+              ["thinking", "Thinking"],
+              ["speaking", "Speaking"],
+              ["off", "AI off"],
+            ],
+          },
+          {
+            key: "mutedOther",
+            label: "Someone else",
+            options: [
+              [false, "Unmuted"],
+              [true, "Maria muted"],
+            ],
+          },
+          {
+            key: "selfMuted",
+            label: "You",
+            options: [
+              [false, "Mic on"],
+              [true, "Muted"],
+            ],
+          },
+        ],
+        s,
+        render,
+      );
+      render();
+    </script>
+  </body>
+</html>
