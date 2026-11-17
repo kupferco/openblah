@@ -64,9 +64,11 @@ export function geminiThinkingConfig(model: string): ThinkingConfig | undefined 
 
 /**
  * Gemini Flash through the LiveKit Google plugin (streaming, tool calls and
- * usage included). Alternatives: OpenAI and Anthropic plugins, wired in T16.
+ * usage included). The OpenAI and Claude adapters sit beside it (openai.ts, anthropic.ts).
  */
-export function geminiLlm(opts: { apiKey?: string; model?: string } = {}): LlmProvider {
+export function geminiLlm(
+  opts: { apiKey?: string; model?: string; baseUrl?: string } = {},
+): LlmProvider {
   const model = opts.model || DEFAULT_GEMINI_MODEL;
   return {
     name: "gemini",
@@ -79,6 +81,7 @@ export function geminiLlm(opts: { apiKey?: string; model?: string } = {}): LlmPr
         // Short voice replies: cap output length.
         maxOutputTokens: 400,
         thinkingConfig: geminiThinkingConfig(model),
+        ...(opts.baseUrl ? { httpOptions: { baseUrl: opts.baseUrl } } : {}),
       }),
   };
 }

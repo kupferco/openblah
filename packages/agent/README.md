@@ -2,7 +2,7 @@
 
 LiveKit Agents (TypeScript) worker: joins a room and runs STT → LLM → TTS for one human (Direct mode). 0.x, unstable.
 
-- Providers (`src/providers`): `SttProvider`, `LlmProvider`, `TtsProvider`. Defaults: Deepgram `nova-3` (multi-language), Gemini Flash, Cartesia `sonic-3`. Alternatives: AssemblyAI/OpenAI/Google STT, OpenAI/Anthropic LLM (T16), ElevenLabs/OpenAI/Google TTS.
+- Providers (`src/providers`): `SttProvider`, `LlmProvider`, `TtsProvider`. Defaults: Deepgram `nova-3` (multi-language), Gemini Flash, Cartesia `sonic-3`. Adapters beside the defaults: OpenAI and Claude (LLM), OpenAI and AssemblyAI (STT), OpenAI and ElevenLabs (TTS), chosen by room, user/product or server default. See `docs/providers.md` (also the eval set: `pnpm eval`).
 - Turn handling: Silero VAD + LiveKit's multilingual turn detector, barge-in after 300 ms of overlapping speech (the unspoken rest is dropped), short "mm-hm" backchannels do not interrupt (the agent resumes).
 - Replies: 1–3 sentences; the reply language follows the speaker (English or Portuguese).
 - State: LiveKit publishes `lk.agent.state` on the agent participant; `useAgentState` in `@openblah/web` reads it.
@@ -31,7 +31,7 @@ The agent is an MCP client (`src/mcp`): Streamable HTTP with SSE fallback, no st
 ```
 
 - `userToken` is sent as the bearer token (no OAuth screen). `ownerId` defaults to the host; a tool call runs only when its owner asked.
-- `allowTools` limits which tools the model sees. Schemas are converted per provider (`LlmProvider.formatToolSchema`, Gemini first).
+- `allowTools` limits which tools the model sees. Schemas are converted per provider (`LlmProvider.formatToolSchema`: Gemini, OpenAI, Claude).
 - Only tools with `readOnlyHint: true` run; everything else is blocked until T13 adds confirmation.
 - Long results go to the screen as a data message on topic `openblah.note`; slow tools publish `openblah.working` and the agent says a short hold line. Tool names are never spoken.
 - Action log (who asked, tool, arguments, status) is written as `mcp_action` log lines. Storing it with the room comes with T13's approval endpoint.

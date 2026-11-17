@@ -1,3 +1,5 @@
+import { claudeLlm, claudeToolSchema, DEFAULT_CLAUDE_MODEL } from "./anthropic.js";
+import { assemblyAiStt } from "./assemblyai.js";
 import { cartesiaTts } from "./cartesia.js";
 import { deepgramStt } from "./deepgram.js";
 import {
@@ -6,11 +8,31 @@ import {
   geminiThinkingConfig,
   geminiToolSchema,
 } from "./gemini.js";
+import { elevenLabsTts } from "./elevenlabs.js";
+import {
+  DEFAULT_OPENAI_MODEL,
+  openaiLlm,
+  openaiStt,
+  openaiToolSchema,
+  openaiTts,
+} from "./openai.js";
+import { providersFromLevels } from "./select.js";
 import type { ProviderSet } from "./types.js";
 
 export * from "./types.js";
+export * from "./select.js";
 export {
+  assemblyAiStt,
   cartesiaTts,
+  claudeLlm,
+  claudeToolSchema,
+  DEFAULT_CLAUDE_MODEL,
+  DEFAULT_OPENAI_MODEL,
+  elevenLabsTts,
+  openaiLlm,
+  openaiStt,
+  openaiToolSchema,
+  openaiTts,
   deepgramStt,
   DEFAULT_GEMINI_MODEL,
   geminiLlm,
@@ -20,11 +42,10 @@ export {
 
 type Env = Record<string, string | undefined>;
 
-/** Default providers (Deepgram, Gemini Flash, Cartesia) from environment keys. */
+/**
+ * Providers from the environment alone (server default level). Gemini, Deepgram
+ * and Cartesia unless OPENBLAH_LLM_PROVIDER / _STT_ / _TTS_ say otherwise.
+ */
 export function defaultProviders(env: Env = process.env): ProviderSet {
-  return {
-    stt: deepgramStt({ apiKey: env.DEEPGRAM_API_KEY }),
-    llm: geminiLlm({ apiKey: env.GEMINI_API_KEY, model: env.GEMINI_MODEL }),
-    tts: cartesiaTts({ apiKey: env.CARTESIA_API_KEY, voice: env.CARTESIA_VOICE_ID }),
-  };
+  return providersFromLevels({}, env);
 }

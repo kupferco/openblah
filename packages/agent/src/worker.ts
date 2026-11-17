@@ -17,7 +17,7 @@ import {
   loadModels,
 } from "./pipeline.js";
 import { openMcpRoom, parseMcpConfig, type ActionLogEntry, type McpRoom } from "./mcp/index.js";
-import { defaultProviders } from "./providers/index.js";
+import { parseRoomProviders, providersFromLevels } from "./providers/index.js";
 
 type Models = Awaited<ReturnType<typeof loadModels>>;
 
@@ -35,7 +35,8 @@ export default defineAgent({
     const cfg = configFromEnv();
     const models = ctx.proc.userData.models as Models;
     await ctx.connect();
-    const providers = defaultProviders();
+    // Room choice (job metadata) beats the user/product level (passed by the host later, T17) and the server default.
+    const providers = providersFromLevels({ room: parseRoomProviders(ctx.job.metadata) });
     const encoder = new TextEncoder();
     const publish = (topic: string, payload: object) =>
       ctx.room.localParticipant?.publishData(encoder.encode(JSON.stringify(payload)), {
