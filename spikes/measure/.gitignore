@@ -1,0 +1,3 @@
+results/
+prompts/*.wav
+.venv/

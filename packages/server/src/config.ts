@@ -93,6 +93,9 @@ export function createAppFromEnv(env: Env = process.env) {
     trial,
     verifier,
     agentSecret: env.OPENBLAH_AGENT_SECRET || undefined,
+    livekitUrl: env.LIVEKIT_URL,
+    ...(env.OPENBLAH_INVITE_BASE_URL ? { inviteBaseUrl: env.OPENBLAH_INVITE_BASE_URL } : {}),
+    ...(env.OPENBLAH_AGENT_NAME ? { agentName: env.OPENBLAH_AGENT_NAME } : {}),
   });
 }
 

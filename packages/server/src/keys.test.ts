@@ -14,6 +14,9 @@ function setup(opts: { product?: boolean; trial?: boolean; trialSeconds?: number
     createRoom: vi.fn(async () => {}),
     createToken: vi.fn(async () => "tok"),
     dispatchAgent: vi.fn(async () => ({ dispatchId: "AD_1", created: true })),
+    updateRoomMetadata: vi.fn(async () => {}),
+    deleteRoom: vi.fn(async () => {}),
+    removeParticipant: vi.fn(async () => {}),
   };
   const verifier: TokenVerifier = {
     verify: async (t) =>
@@ -212,6 +215,9 @@ describe("sensitive rooms", () => {
         createRoom: async () => {},
         createToken: async () => "t",
         dispatchAgent: async () => ({ dispatchId: "d", created: true }),
+        updateRoomMetadata: async () => {},
+        deleteRoom: async () => {},
+        removeParticipant: async () => {},
       },
       productKeys: { "*": { keys: PRODUCT, tier: "free" } },
     });

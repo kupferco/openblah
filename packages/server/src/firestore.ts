@@ -1,7 +1,13 @@
+import { createHash } from "node:crypto";
 import { FieldValue, Firestore } from "@google-cloud/firestore";
 import type { UserRecord } from "./accounts.js";
 import type { Provider, StoredKey } from "./keys.js";
-import type { Room, Storage } from "./types.js";
+import type { ConsentRecord, Invite, Participant, Room, Storage } from "./types.js";
+
+/** Firestore ids cannot hold arbitrary user ids, so hash the pair. */
+function pairId(roomId: string, userId: string): string {
+  return createHash("sha256").update(`${roomId}\n${userId}`).digest("hex");
+}
 
 export class FirestoreStorage implements Storage {
   private readonly db: Firestore;
@@ -12,7 +18,7 @@ export class FirestoreStorage implements Storage {
 
   async createRoom(room: Room): Promise<void> {
     // create() fails if the document already exists.
-    await this.db.collection("rooms").doc(room.id).create(room);
+    await this.db.collection("rooms").doc(room.id).create(clean(room));
   }
 
   async getRoom(id: string): Promise<Room | null> {
@@ -69,4 +75,73 @@ export class FirestoreStorage implements Storage {
     await ref.set({ seconds: FieldValue.increment(seconds) }, { merge: true });
     return this.getUsage(counterId);
   }
+
+  async updateRoom(room: Room): Promise<void> {
+    await this.db.collection("rooms").doc(room.id).set(clean(room));
+  }
+
+  async createInvite(invite: Invite): Promise<void> {
+    await this.db.collection("invites").doc(invite.id).create(invite);
+  }
+
+  async getInvite(id: string): Promise<Invite | null> {
+    const snap = await this.db.collection("invites").doc(id).get();
+    return snap.exists ? (snap.data() as Invite) : null;
+  }
+
+  async getInviteByTokenHash(tokenHash: string): Promise<Invite | null> {
+    const snap = await this.db
+      .collection("invites")
+      .where("tokenHash", "==", tokenHash)
+      .limit(1)
+      .get();
+    const doc = snap.docs[0];
+    return doc ? (doc.data() as Invite) : null;
+  }
+
+  async consumeInvite(id: string, now: Date): Promise<Invite | null> {
+    const ref = this.db.collection("invites").doc(id);
+    return this.db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return null;
+      const inv = snap.data() as Invite;
+      if (inv.revoked || inv.uses >= inv.maxUses) return null;
+      if (Date.parse(inv.expiresAt) <= now.getTime()) return null;
+      const next = { ...inv, uses: inv.uses + 1 };
+      tx.update(ref, { uses: next.uses });
+      return next;
+    });
+  }
+
+  async revokeInvite(id: string): Promise<void> {
+    await this.db.collection("invites").doc(id).update({ revoked: true });
+  }
+
+  async saveParticipant(p: Participant): Promise<void> {
+    await this.db.collection("participants").doc(pairId(p.roomId, p.userId)).set(clean(p));
+  }
+
+  async getParticipant(roomId: string, userId: string): Promise<Participant | null> {
+    const snap = await this.db.collection("participants").doc(pairId(roomId, userId)).get();
+    return snap.exists ? (snap.data() as Participant) : null;
+  }
+
+  async listParticipants(roomId: string): Promise<Participant[]> {
+    const snap = await this.db.collection("participants").where("roomId", "==", roomId).get();
+    return snap.docs.map((d) => d.data() as Participant);
+  }
+
+  async saveConsent(c: ConsentRecord): Promise<void> {
+    await this.db.collection("consents").doc(pairId(c.roomId, c.userId)).set(c);
+  }
+
+  async listConsents(roomId: string): Promise<ConsentRecord[]> {
+    const snap = await this.db.collection("consents").where("roomId", "==", roomId).get();
+    return snap.docs.map((d) => d.data() as ConsentRecord);
+  }
+}
+
+/** Firestore rejects undefined fields. */
+function clean<T extends object>(v: T): T {
+  return JSON.parse(JSON.stringify(v)) as T;
 }
