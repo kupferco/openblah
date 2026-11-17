@@ -9,6 +9,7 @@ import {
   apiKeyId,
   DATA_TERMS,
   isProvider,
+  PROVIDERS,
   resolveRoomKeys,
   type KeyStore,
   type KeyTier,
@@ -1031,6 +1032,8 @@ export function createApp(deps: AppDeps): Hono {
             label: llmLabel(id),
             recommended: id === "gemini",
             hasKey: saved.has(id),
+            // Keys still to add to use this model with your own keys (speech keys are needed too).
+            missingKeys: [...PROVIDERS, id].filter((p) => !saved.has(p)),
             usable: u.ok,
             ...(u.ok ? { keyMode: u.mode } : {}),
             copy: ONBOARDING_COPY[id],

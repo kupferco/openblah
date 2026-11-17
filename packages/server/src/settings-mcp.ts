@@ -89,7 +89,9 @@ async function callTool(ops: SettingsToolOps, name: string, args: Record<string,
     case "get_settings":
       return ops.get({ roomId, actorUserId });
     case "propose_settings_change": {
-      const { roomId: _r, actorUserId: _a, ...change } = args;
+      const change = { ...args };
+      delete change.roomId;
+      delete change.actorUserId;
       return ops.propose({ roomId, actorUserId, change });
     }
     case "confirm_settings_change": {

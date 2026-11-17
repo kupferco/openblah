@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it, vi } from "vitest";
 import {
   apiKeyId,
@@ -212,6 +213,10 @@ describe("onboarding", () => {
     expect(o.providers[0].keyUrl).toContain("aistudio.google.com");
     expect(o.providers[0].copy).toMatch(/free/i);
     expect(o.intro).toMatch(/Gemini/);
+    expect(o.providers[1]).toMatchObject({
+      id: "openai",
+      missingKeys: ["gemini", "deepgram", "cartesia", "openai"],
+    });
     const r = await t.call("POST", "/v1/users/u1/keys/gemini/check", { key: "AIza-secret-value" });
     expect(await json(r)).toEqual({ provider: "gemini", status: "valid" });
     expect(check).toHaveBeenCalledWith("gemini", "AIza-secret-value");

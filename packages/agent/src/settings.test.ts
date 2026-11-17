@@ -79,9 +79,10 @@ function conversation(connection: Pick<McpConnection, "callTool">) {
     currentSpeaker: () => speaker,
     turn: () => turn,
   });
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  /* eslint-disable @typescript-eslint/no-explicit-any */
   const run = (name: keyof typeof tools, args: object = {}) =>
     (tools[name] as any).execute(args, { ctx: {}, toolCallId: "1" }) as Promise<string>;
+  /* eslint-enable @typescript-eslint/no-explicit-any */
   return {
     say: (who: string) => {
       speaker = who;
