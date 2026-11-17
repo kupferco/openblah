@@ -9,6 +9,9 @@ function setup() {
   const livekit: LiveKitGateway = {
     createRoom: vi.fn(async () => {}),
     createToken: vi.fn(async (r) => `tok:${r.roomId}:${r.userId}:${r.isHost}`),
+    updateRoomMetadata: vi.fn(async () => {}),
+    deleteRoom: vi.fn(async () => {}),
+    removeParticipant: vi.fn(async () => {}),
     dispatchAgent: vi.fn(async () => ({ dispatchId: "AD_1", created: true })),
   };
   const app = createApp({ storage: new MemoryStorage(), livekit, apiKeys: [KEY, "other"] });
