@@ -17,8 +17,9 @@ export class DirectAgent extends voice.Agent {
   constructor(
     cfg: Pick<AgentConfig, "agentName">,
     private readonly ttsProvider: TtsProvider,
+    tools?: voice.AgentOptions<unknown>["tools"],
   ) {
-    super({ instructions: directInstructions(cfg) });
+    super({ instructions: directInstructions(cfg), tools });
   }
 
   /** The session's TTS engine, so language changes reach it (the agent itself holds none). */

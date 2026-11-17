@@ -9,3 +9,4 @@ export {
   turnHandling,
 } from "./pipeline.js";
 export * from "./providers/index.js";
+export * from "./room-control.js";
