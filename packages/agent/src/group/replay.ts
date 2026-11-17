@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { GroupBehaviour } from "./behaviour.js";
 import { SpeakClassifier } from "./classifier.js";
 import { scriptFor, type Scenario } from "./fixtures.js";
 import { scriptedRecognizerFactory } from "./recognizers.js";
@@ -15,6 +16,8 @@ export interface ReplayOptions {
   fixturesDir: string;
   onDecision?: (d: TurnDecision) => void;
   frameMs?: number;
+  /** Behaviour to use; defaults to a new one in the scenario's mode, with the first participant as host. */
+  behaviour?: GroupBehaviour;
 }
 
 export interface ReplayResult {
@@ -22,6 +25,7 @@ export interface ReplayResult {
   decisions: TurnDecision[];
   /** Decision for the last human turn, which the scenario's `expected` refers to. */
   last?: TurnDecision;
+  session: GroupSession;
   stats: ReturnType<GroupSession["gateStats"]>;
 }
 
@@ -35,6 +39,13 @@ export async function replayScenario(sc: Scenario, opts: ReplayOptions): Promise
     agentName,
     recognizer: opts.recognizer ?? scriptedRecognizerFactory(scriptFor(sc)),
     classifier: opts.classifier,
+    behaviour:
+      opts.behaviour ??
+      new GroupBehaviour({
+        agentName,
+        mode: sc.mode,
+        hostIdentity: sc.participants[0],
+      }),
     onDecision: opts.onDecision ?? (() => {}),
   });
   const wavs = new Map<string, ReturnType<typeof readWav>>();
@@ -67,6 +78,7 @@ export async function replayScenario(sc: Scenario, opts: ReplayOptions): Promise
     transcript: session.transcript.format(),
     decisions: session.decisions,
     last: [...session.decisions].sort((a, b) => a.turnEndMs - b.turnEndMs).at(-1),
+    session,
     stats: session.gateStats(),
   };
 }

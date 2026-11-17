@@ -12,6 +12,25 @@ export const CONTROL_TOPIC = "openblah.control";
 /** Participant attribute the agent sets to `"true"` while listening is paused. */
 export const AI_PAUSED_ATTRIBUTE = "openblah.ai_paused";
 
+/** Agent participant attributes: the room mode and whether the agent is muted for everyone. */
+export const MODE_ATTRIBUTE = "openblah.mode";
+export const AGENT_MUTED_ATTRIBUTE = "openblah.agent_muted";
+
+/** How the agent behaves: only when addressed, also at natural pauses, or one to one with the host. */
+export type RoomMode = "listening" | "facilitating" | "direct";
+
+/** Client to agent: switch the room mode (Direct is host only). */
+export interface SetModeMessage {
+  type: "set_mode";
+  mode: RoomMode;
+}
+
+/** Client to agent: mute or unmute the agent for everyone. */
+export interface MuteAgentMessage {
+  type: "mute_agent";
+  muted: boolean;
+}
+
 /** Client to agent: pause or resume all listening for everyone. */
 export interface PauseMessage {
   type: "pause_ai";
@@ -33,7 +52,8 @@ export interface InviteResponseMessage {
   status: "sent" | "declined";
 }
 
-export type ControlMessage = PauseMessage | InviteRequestMessage | InviteResponseMessage;
+export type ControlMessage =
+  PauseMessage | InviteRequestMessage | InviteResponseMessage | SetModeMessage | MuteAgentMessage;
 
 /** Parse a control message; null for anything that is not one. */
 export function parseControlMessage(payload: Uint8Array | string): ControlMessage | null {
@@ -48,6 +68,15 @@ export function parseControlMessage(payload: Uint8Array | string): ControlMessag
   const m = raw as Record<string, unknown>;
   if (m.type === "pause_ai" && typeof m.paused === "boolean") {
     return { type: "pause_ai", paused: m.paused };
+  }
+  if (
+    m.type === "set_mode" &&
+    (m.mode === "listening" || m.mode === "facilitating" || m.mode === "direct")
+  ) {
+    return { type: "set_mode", mode: m.mode };
+  }
+  if (m.type === "mute_agent" && typeof m.muted === "boolean") {
+    return { type: "mute_agent", muted: m.muted };
   }
   if (m.type === "invite_request" && typeof m.requestId === "string" && typeof m.who === "string") {
     return { type: "invite_request", requestId: m.requestId, who: m.who };

@@ -1,10 +1,11 @@
-import type { ConsentRecord, Invite, Participant, Room, Storage } from "./types.js";
+import type { CallSummary, ConsentRecord, Invite, Participant, Room, Storage } from "./types.js";
 
 export class MemoryStorage implements Storage {
   private readonly rooms = new Map<string, Room>();
   private readonly invites = new Map<string, Invite>();
   private readonly participants = new Map<string, Participant>();
   private readonly consents = new Map<string, ConsentRecord>();
+  private readonly summaries = new Map<string, CallSummary>();
 
   async createRoom(room: Room): Promise<void> {
     if (this.rooms.has(room.id)) throw new Error("room already exists");
@@ -73,5 +74,14 @@ export class MemoryStorage implements Storage {
     return [...this.consents.values()]
       .filter((c) => c.roomId === roomId)
       .map((c) => structuredClone(c));
+  }
+
+  async saveSummary(summary: CallSummary): Promise<void> {
+    this.summaries.set(summary.roomId, structuredClone(summary));
+  }
+
+  async getSummary(roomId: string): Promise<CallSummary | null> {
+    const s = this.summaries.get(roomId);
+    return s ? structuredClone(s) : null;
   }
 }

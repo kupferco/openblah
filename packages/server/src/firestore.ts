@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { Firestore } from "@google-cloud/firestore";
-import type { ConsentRecord, Invite, Participant, Room, Storage } from "./types.js";
+import type { CallSummary, ConsentRecord, Invite, Participant, Room, Storage } from "./types.js";
 
 /** Firestore ids cannot hold arbitrary user ids, so hash the pair. */
 function pairId(roomId: string, userId: string): string {
@@ -86,6 +86,15 @@ export class FirestoreStorage implements Storage {
   async listConsents(roomId: string): Promise<ConsentRecord[]> {
     const snap = await this.db.collection("consents").where("roomId", "==", roomId).get();
     return snap.docs.map((d) => d.data() as ConsentRecord);
+  }
+
+  async saveSummary(summary: CallSummary): Promise<void> {
+    await this.db.collection("summaries").doc(summary.roomId).set(clean(summary));
+  }
+
+  async getSummary(roomId: string): Promise<CallSummary | null> {
+    const snap = await this.db.collection("summaries").doc(roomId).get();
+    return snap.exists ? (snap.data() as CallSummary) : null;
   }
 }
 
