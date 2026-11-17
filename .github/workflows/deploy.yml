@@ -1,0 +1,118 @@
+# Deploys the server and the agent worker to Cloud Run (min instances 0).
+# staging: every push to the staging branch (or run by hand). prod: run by hand on main only.
+name: Deploy
+on:
+  push:
+    branches: [staging]
+  workflow_dispatch:
+    inputs:
+      env:
+        description: Target environment
+        type: choice
+        options: [staging, prod]
+        default: staging
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-${{ github.event.inputs.env || 'staging' }}
+
+env:
+  TARGET: ${{ github.event.inputs.env || 'staging' }}
+  REGION: ${{ vars.GCP_REGION || 'europe-west1' }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Production only from main.
+    if: github.event.inputs.env != 'prod' || github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+
+      - name: Check deploy secrets
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+        run: |
+          for v in GCP_PROJECT_ID GCP_WORKLOAD_IDENTITY_PROVIDER GCP_SERVICE_ACCOUNT; do
+            if [ -z "${!v}" ]; then
+              echo "::viber-manual::{\"reason\":\"the repo secret $v is not set\",\"action\":\"Dani: add the GCP repo secrets described in docs/deploy.md (GCP_PROJECT_ID, GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_SERVICE_ACCOUNT) in GitHub: Settings > Secrets and variables > Actions\",\"commands\":[],\"verify\":\"Re-run the Deploy workflow; this step passes\"}"
+              exit 1
+            fi
+          done
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Build and push images
+        id: build
+        run: |
+          gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
+          REPO="$REGION-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/openblah"
+          for part in server agent; do
+            docker build -f packages/$part/Dockerfile -t "$REPO/$part:$GITHUB_SHA" .
+            docker push "$REPO/$part:$GITHUB_SHA"
+          done
+          echo "repo=$REPO" >> "$GITHUB_OUTPUT"
+
+      # Worker first, so the server can be pointed at its URL.
+      # CPU always allocated and a 60 min timeout: the worker holds a WebSocket to LiveKit
+      # for the whole call; with throttled CPU between requests it would stall.
+      # max-instances caps cost.
+      - name: Deploy agent worker
+        id: worker
+        run: |
+          gcloud run deploy "openblah-agent-$TARGET" \
+            --image "${{ steps.build.outputs.repo }}/agent:$GITHUB_SHA" --region "$REGION" \
+            --min-instances 0 --max-instances 5 --no-cpu-throttling --cpu 2 --memory 2Gi \
+            --timeout 3600 --no-allow-unauthenticated \
+            --set-env-vars "OPENBLAH_ENV=$TARGET" \
+            --set-secrets "LIVEKIT_URL=LIVEKIT_URL:latest,LIVEKIT_API_KEY=LIVEKIT_API_KEY:latest,LIVEKIT_API_SECRET=LIVEKIT_API_SECRET:latest,DEEPGRAM_API_KEY=DEEPGRAM_API_KEY:latest,CARTESIA_API_KEY=CARTESIA_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest"
+          echo "url=$(gcloud run services describe "openblah-agent-$TARGET" --region "$REGION" --format='value(status.url)')" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy server
+        id: server
+        run: |
+          gcloud run deploy "openblah-server-$TARGET" \
+            --image "${{ steps.build.outputs.repo }}/server:$GITHUB_SHA" --region "$REGION" \
+            --min-instances 0 --max-instances 10 --allow-unauthenticated \
+            --set-env-vars "OPENBLAH_STORAGE=firestore,AGENT_WORKER_URL=${{ steps.worker.outputs.url }},AGENT_WORKER_AUTH=iam" \
+            --set-secrets "LIVEKIT_URL=LIVEKIT_URL:latest,LIVEKIT_API_KEY=LIVEKIT_API_KEY:latest,LIVEKIT_API_SECRET=LIVEKIT_API_SECRET:latest,OPENBLAH_API_KEYS=OPENBLAH_API_KEYS:latest"
+          # Let the server's service account call the private worker.
+          SA=$(gcloud run services describe "openblah-server-$TARGET" --region "$REGION" --format='value(spec.template.spec.serviceAccountName)')
+          gcloud run services add-iam-policy-binding "openblah-agent-$TARGET" --region "$REGION" \
+            --member "serviceAccount:$SA" --role roles/run.invoker --quiet
+          echo "url=$(gcloud run services describe "openblah-server-$TARGET" --region "$REGION" --format='value(status.url)')" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke test warm-up
+        run: |
+          curl -fsS "${{ steps.server.outputs.url }}/health"
+          curl -fsS -X POST "${{ steps.server.outputs.url }}/v1/warmup" \
+            -H "Authorization: Bearer ${{ secrets.OPENBLAH_SMOKE_API_KEY }}" \
+            -H "Content-Type: application/json" -d '{"userId":"deploy-smoke"}'
+
+      - name: Tell Viber how the deploy went
+        if: always()
+        uses: kupferco/viber/.github/actions/report@main
+        with:
+          {
+            kind: deploy,
+            env: "${{ env.TARGET == 'prod' && 'prod' || 'staging' }}",
+            outcome: "${{ job.status == 'success' && 'deployed' || 'failed' }}",
+            viber-url: "${{ secrets.VIBER_URL }}",
+            hook-secret: "${{ secrets.VIBER_HOOK_SECRET }}",
+          }

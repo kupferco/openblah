@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>OpenBlah clickable mock</title>
+    <link rel="stylesheet" href="shared/base.css" />
+    <style>
+      main {
+        max-width: 560px;
+        margin: 0 auto;
+        padding: var(--ob-s6) var(--ob-s4);
+        display: flex;
+        flex-direction: column;
+        gap: var(--ob-s3);
+      }
+      .flow {
+        display: block;
+        text-decoration: none;
+        color: var(--ob-text);
+        background: var(--ob-surface);
+        border: 1px solid var(--ob-border);
+        border-radius: var(--ob-r-md);
+        padding: var(--ob-s4);
+      }
+      .flow b {
+        display: block;
+        margin-bottom: 4px;
+      }
+      .flow span {
+        color: var(--ob-text-dim);
+        font-size: var(--ob-fs-sm);
+      }
+      .flow:active,
+      .flow:hover {
+        border-color: var(--ob-primary);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>OpenBlah clickable mock</h1>
+      <p class="dim">
+        Fake data only. Nothing here calls a server. Every screen has a "States" button at the top
+        to switch states (agent speaking, someone muted, AI off…).
+      </p>
+      <a class="flow" href="join/index.html"
+        ><b>1. Desktop guest join</b><span>Name, consent line, mic check, join.</span></a
+      >
+      <a class="flow" href="join-mobile/index.html"
+        ><b>2. Mobile browser join</b><span>The same flow on a phone.</span></a
+      >
+      <a class="flow" href="call/index.html"
+        ><b>3. Call screen</b><span>Agent states, 2 to 4 people, mute, leave.</span></a
+      >
+      <a class="flow" href="app/index.html"
+        ><b>4. Standalone app</b><span>Home, rooms, start or join a call, history.</span></a
+      >
+      <a class="flow" href="watch/index.html"
+        ><b>5. Apple Watch</b><span>Join, mute, leave.</span></a
+      >
+      <p class="small dim">Design tokens: <code>shared/tokens.css</code>.</p>
+    </main>
+  </body>
+</html>
