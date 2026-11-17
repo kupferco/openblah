@@ -133,6 +133,10 @@ if (process.argv[1] === import.meta.filename) {
     new ServerOptions({
       agent: import.meta.filename,
       agentName: configFromEnv().dispatchName,
+      // Cloud Run sends requests (the server's warm-up) to $PORT; the worker's
+      // built-in HTTP server answers them and the request wakes the instance.
+      host: "0.0.0.0",
+      port: Number(process.env.PORT ?? 8081),
     }),
   );
 }

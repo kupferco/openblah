@@ -99,3 +99,12 @@ export interface LiveKitGateway {
     metadata: string,
   ): Promise<{ dispatchId: string; created: boolean }>;
 }
+
+/**
+ * Wakes the agent worker (a Cloud Run service with min instances 0) so it is
+ * registered with LiveKit by the time a dispatch arrives. No STT/LLM/TTS calls.
+ */
+export interface WorkerWaker {
+  /** Resolves true when the worker answered, false when it is not configured or unreachable. */
+  wake(): Promise<boolean>;
+}
