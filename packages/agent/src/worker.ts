@@ -7,7 +7,7 @@ import {
   type tts,
   voice,
 } from "@livekit/agents";
-import { RoomEvent } from "@livekit/rtc-node";
+import { RoomEvent, ParticipantKind } from "@livekit/rtc-node";
 import { configFromEnv } from "./config.js";
 import { writeLog } from "./latency.js";
 import {
@@ -19,6 +19,14 @@ import {
 } from "./pipeline.js";
 import { openMcpRoom, parseMcpConfig, type ActionLogEntry, type McpRoom } from "./mcp/index.js";
 import { defaultProviders } from "./providers/index.js";
+import {
+  agentNameFromMetadata,
+  AI_PAUSED_ATTRIBUTE,
+  CONTROL_TOPIC,
+  hostIdentityFromMetadata,
+  parseControlMessage,
+  RoomControl,
+} from "./room-control.js";
 
 type Models = Awaited<ReturnType<typeof loadModels>>;
 
@@ -33,9 +41,11 @@ export default defineAgent({
     proc.userData.models = await loadModels();
   },
   entry: async (ctx: JobContext) => {
-    const cfg = configFromEnv();
+    const env = configFromEnv();
     const models = ctx.proc.userData.models as Models;
     await ctx.connect();
+    // The room's own agent name wins over the environment default (Q1).
+    const cfg = { ...env, agentName: agentNameFromMetadata(ctx.room.metadata, env.agentName) };
     const providers = defaultProviders();
     const encoder = new TextEncoder();
     const publish = (topic: string, payload: object) =>
@@ -43,6 +53,11 @@ export default defineAgent({
         reliable: true,
         topic,
       });
+    const control: RoomControl = new RoomControl({
+      agentName: cfg.agentName,
+      hostIdentity: hostIdentityFromMetadata(ctx.room.metadata),
+      getLanguage: () => directAgent.language,
+    });
     const live: { session?: voice.AgentSession; userTurns: number } = { userTurns: 0 };
     const mcpConfig = parseMcpConfig(ctx.job.metadata);
     let mcp: McpRoom | undefined;
@@ -76,20 +91,56 @@ export default defineAgent({
       });
       ctx.addShutdownCallback(async () => mcp?.close());
     }
-    const agent = new DirectAgent(cfg, providers.tts, mcp?.tools);
+    const directAgent = new DirectAgent(cfg, providers.tts, { ...control.tools(), ...mcp?.tools });
     const options = buildSessionOptions(providers, models.vad, createTurnDetector());
-    agent.bindTts(options.tts as tts.TTS);
+    directAgent.bindTts(options.tts as tts.TTS);
     const session = new voice.AgentSession(options);
     live.session = session;
     session.on(voice.AgentSessionEventTypes.UserInputTranscribed, (ev) => {
       if (ev.isFinal) live.userTurns += 1;
     });
-    attachLatencyLogging(session, agent, ctx.room.name);
-    await session.start({ agent, room: ctx.room });
+    attachLatencyLogging(session, directAgent, ctx.room.name);
+    await session.start({ agent: directAgent, room: ctx.room });
     writeLog({ event: "agent_joined", roomId: ctx.room.name });
-    session.generateReply({
-      instructions: `Greet the person briefly as ${cfg.agentName} and ask how you can help.`,
+
+    const local = ctx.room.localParticipant;
+    let lastSpeech: { waitForPlayout(): Promise<void> } | undefined;
+    control.bind({
+      say: (text) => {
+        lastSpeech = session.say(text);
+      },
+      setListening: (enabled) => session.input.setAudioEnabled(enabled),
+      publishPaused: (paused) => {
+        void local?.setAttributes({ [AI_PAUSED_ATTRIBUTE]: String(paused) });
+      },
+      sendTo: (identity, msg) => {
+        void local?.publishData(new TextEncoder().encode(JSON.stringify(msg)), {
+          reliable: true,
+          topic: CONTROL_TOPIC,
+          destination_identities: [identity],
+        });
+      },
+      leave: () => {
+        void (async () => {
+          await lastSpeech?.waitForPlayout().catch(() => undefined);
+          ctx.shutdown("asked to leave");
+        })();
+      },
     });
+    ctx.room.on(RoomEvent.DataReceived, (payload, participant, _kind, topic) => {
+      if (topic !== CONTROL_TOPIC) return;
+      const msg = parseControlMessage(payload);
+      if (msg) control.onControlMessage(participant ?? null, msg);
+    });
+    ctx.room.on(RoomEvent.ParticipantConnected, (p) => {
+      writeLog({ event: "participant_joined", roomId: ctx.room.name, paused: control.paused });
+      control.onParticipantJoined({
+        identity: p.identity,
+        name: p.name,
+        isAgent: p.kind === ParticipantKind.AGENT,
+      });
+    });
+    control.announceEntry();
   },
 });
 

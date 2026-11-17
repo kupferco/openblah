@@ -18,12 +18,12 @@ export class DirectAgent extends voice.Agent {
   constructor(
     cfg: Pick<AgentConfig, "agentName">,
     private readonly ttsProvider: TtsProvider,
-    mcpTools?: llm.ToolContextLike,
+    tools?: llm.ToolContextLike,
   ) {
-    const hasTools = !!mcpTools && Object.keys(mcpTools).length > 0;
+    const hasTools = !!tools && Object.keys(tools).length > 0;
     super({
       instructions: directInstructions(cfg) + (hasTools ? ` ${MCP_INSTRUCTIONS}` : ""),
-      ...(hasTools ? { tools: mcpTools } : {}),
+      ...(hasTools ? { tools } : {}),
     });
   }
 
