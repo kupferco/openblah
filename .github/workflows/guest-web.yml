@@ -1,10 +1,24 @@
 name: Guest page
 on:
   pull_request:
-    paths: ["apps/guest-web/**", "packages/core/**", "packages/web/**", "firebase.json", ".github/workflows/guest-web.yml"]
+    paths:
+      [
+        "apps/guest-web/**",
+        "packages/core/**",
+        "packages/web/**",
+        "firebase.json",
+        ".github/workflows/guest-web.yml",
+      ]
   push:
     branches: [main]
-    paths: ["apps/guest-web/**", "packages/core/**", "packages/web/**", "firebase.json", ".github/workflows/guest-web.yml"]
+    paths:
+      [
+        "apps/guest-web/**",
+        "packages/core/**",
+        "packages/web/**",
+        "firebase.json",
+        ".github/workflows/guest-web.yml",
+      ]
 
 permissions:
   contents: read
@@ -24,7 +38,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Build (preview: fake invite server, production: real server)
+      - name: Build the page
         run: pnpm --filter @openblah/guest-web build
         env:
           # The preview build answers invite calls with fake data (token "demo"); production never does.

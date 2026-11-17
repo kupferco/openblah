@@ -7,3 +7,4 @@ pnpm-lock.yaml
 apps/example/ios
 apps/example/android
 apps/example/.expo
+.firebaserc
