@@ -28,9 +28,11 @@
     "@livekit/agents-plugin-google": "^1.10.0",
     "@livekit/agents-plugin-livekit": "^1.10.0",
     "@livekit/agents-plugin-silero": "^1.10.0",
-    "@livekit/rtc-node": "^1.2.2"
+    "@livekit/rtc-node": "^1.2.2",
+    "@modelcontextprotocol/sdk": "^1.32.2"
   },
   "devDependencies": {
-    "tsx": "^4.23.15"
+    "tsx": "^4.23.15",
+    "zod": "^4.6.7"
   }
 }

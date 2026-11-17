@@ -10,3 +10,5 @@ export {
 } from "./pipeline.js";
 export * from "./providers/index.js";
 export * as group from "./group/index.js";
+export * from "./room-control.js";
+export * from "./mcp/index.js";

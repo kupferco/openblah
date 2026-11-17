@@ -7,3 +7,4 @@ export * from "@openblah/core";
 export * from "@openblah/core/react";
 export { registerOpenBlahGlobals, createOpenBlahClient } from "./native.js";
 export { CALL_APPLE_AUDIO, createCallAudio, type AudioSessionLike } from "./audio.js";
+export { shareInvite, type ShareInviteOptions, type ShareLike } from "./invite.js";
