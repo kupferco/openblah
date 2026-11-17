@@ -1,0 +1,2 @@
+# Verify the latest 1.x releases before running; keep the plugins on one version.
+livekit-agents[deepgram,cartesia,google,silero,turn-detector]>=1.2,<2

@@ -28,5 +28,12 @@ export function createAppFromEnv(env: Env = process.env) {
   if (kind === "firestore") storage = new FirestoreStorage();
   else if (kind === "memory") storage = new MemoryStorage();
   else throw new Error(`OPENBLAH_STORAGE must be "memory" or "firestore", got "${kind}"`);
-  return createApp({ storage, livekit, apiKeys });
+  return createApp({
+    storage,
+    livekit,
+    apiKeys,
+    livekitUrl: env.LIVEKIT_URL,
+    ...(env.OPENBLAH_INVITE_BASE_URL ? { inviteBaseUrl: env.OPENBLAH_INVITE_BASE_URL } : {}),
+    ...(env.OPENBLAH_AGENT_NAME ? { agentName: env.OPENBLAH_AGENT_NAME } : {}),
+  });
 }

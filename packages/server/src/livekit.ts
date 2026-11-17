@@ -1,5 +1,6 @@
 import { AccessToken, AgentDispatchClient, RoomServiceClient } from "livekit-server-sdk";
-import type { LiveKitGateway, TokenRequest } from "./types.js";
+import type { VideoGrant } from "livekit-server-sdk";
+import type { LiveKitGateway, Role, TokenRequest } from "./types.js";
 
 /** Must match the agent worker's dispatch name (packages/agent). */
 export const DEFAULT_AGENT_DISPATCH_NAME = "openblah-agent";
@@ -10,6 +11,23 @@ export interface LiveKitConfig {
   agentName?: string;
   apiKey: string;
   apiSecret: string;
+}
+
+/**
+ * Grants per role. Nobody may change their own metadata (it carries the role),
+ * and only the host gets admin rights. Guests have no admin or recording rights.
+ */
+export function grantsFor(role: Role, roomId: string): VideoGrant {
+  return {
+    room: roomId,
+    roomJoin: true,
+    canPublish: true,
+    canSubscribe: true,
+    canPublishData: true,
+    canUpdateOwnMetadata: false,
+    roomAdmin: role === "host",
+    roomRecord: false,
+  };
 }
 
 export class RealLiveKit implements LiveKitGateway {
@@ -25,6 +43,18 @@ export class RealLiveKit implements LiveKitGateway {
 
   async createRoom(roomId: string, metadata: string): Promise<void> {
     await this.rooms.createRoom({ name: roomId, metadata });
+  }
+
+  async updateRoomMetadata(roomId: string, metadata: string): Promise<void> {
+    await this.rooms.updateRoomMetadata(roomId, metadata);
+  }
+
+  async deleteRoom(roomId: string): Promise<void> {
+    await this.rooms.deleteRoom(roomId);
+  }
+
+  async removeParticipant(roomId: string, userId: string): Promise<void> {
+    await this.rooms.removeParticipant(roomId, userId);
   }
 
   async dispatchAgent(
@@ -43,15 +73,9 @@ export class RealLiveKit implements LiveKitGateway {
       identity: req.userId,
       name: req.displayName,
       ttl: req.ttlSeconds,
+      metadata: JSON.stringify({ role: req.role }),
     });
-    at.addGrant({
-      room: req.roomId,
-      roomJoin: true,
-      canPublish: true,
-      canSubscribe: true,
-      canPublishData: true,
-      roomAdmin: req.isHost,
-    });
+    at.addGrant(grantsFor(req.role, req.roomId));
     return at.toJwt();
   }
 }
