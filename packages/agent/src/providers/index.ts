@@ -21,7 +21,17 @@ export {
 type Env = Record<string, string | undefined>;
 
 /** Default providers (Deepgram, Gemini Flash, Cartesia) from environment keys. */
-export function defaultProviders(env: Env = process.env): ProviderSet {
+export function defaultProviders(
+  env: Env = process.env,
+  keys?: { gemini: string; deepgram: string; cartesia: string },
+): ProviderSet {
+  if (keys) {
+    return {
+      stt: deepgramStt({ apiKey: keys.deepgram }),
+      llm: geminiLlm({ apiKey: keys.gemini }),
+      tts: cartesiaTts({ apiKey: keys.cartesia, voice: env.CARTESIA_VOICE_ID }),
+    };
+  }
   return {
     stt: deepgramStt({ apiKey: env.DEEPGRAM_API_KEY }),
     llm: geminiLlm({ apiKey: env.GEMINI_API_KEY, model: env.GEMINI_MODEL }),

@@ -17,6 +17,7 @@ import {
   DirectAgent,
   loadModels,
 } from "./pipeline.js";
+import { fetchRoomKeys, reportUsage, UsageMeter } from "./keys.js";
 import { openMcpRoom, parseMcpConfig, type ActionLogEntry, type McpRoom } from "./mcp/index.js";
 import { defaultProviders } from "./providers/index.js";
 import {
@@ -44,9 +45,16 @@ export default defineAgent({
     const env = configFromEnv();
     const models = ctx.proc.userData.models as Models;
     await ctx.connect();
+    const roomKeys = await fetchRoomKeys(ctx.room.name ?? "");
+    const providers = defaultProviders(process.env, roomKeys?.keys);
+    const encoder = new TextEncoder();
+    const publish = (topic: string, payload: object) =>
+      ctx.room.localParticipant?.publishData(encoder.encode(JSON.stringify(payload)), {
+        reliable: true,
+        topic,
+      });
     // The room's own agent name wins over the environment default (Q1).
     const cfg = { ...env, agentName: agentNameFromMetadata(ctx.room.metadata, env.agentName) };
-    const providers = defaultProviders();
     const control: RoomControl = new RoomControl({
       agentName: cfg.agentName,
       hostIdentity: hostIdentityFromMetadata(ctx.room.metadata),
@@ -56,12 +64,6 @@ export default defineAgent({
     const mcpConfig = parseMcpConfig(ctx.job.metadata);
     let mcp: McpRoom | undefined;
     if (mcpConfig) {
-      const encoder = new TextEncoder();
-      const publish = (topic: string, payload: object) =>
-        ctx.room.localParticipant?.publishData(encoder.encode(JSON.stringify(payload)), {
-          reliable: true,
-          topic,
-        });
       mcp = await openMcpRoom({
         roomId: ctx.room.name ?? "",
         config: mcpConfig,
@@ -85,6 +87,22 @@ export default defineAgent({
     live.session = session;
     attachLatencyLogging(session, directAgent, ctx.room.name);
     await session.start({ agent: directAgent, room: ctx.room });
+    if (roomKeys?.mode === "trial") {
+      // The server counts the trial; the worker only reports seconds and stops when it is used up.
+      const meter = new UsageMeter();
+      session.on(voice.AgentSessionEventTypes.AgentStateChanged, (ev) =>
+        meter.setState(ev.newState),
+      );
+      const timer = setInterval(() => {
+        void reportUsage(ctx.room.name ?? "", meter.take()).then((more) => {
+          if (!more) void session.close();
+        });
+      }, 10_000);
+      ctx.addShutdownCallback(async () => {
+        clearInterval(timer);
+        await reportUsage(ctx.room.name ?? "", meter.take());
+      });
+    }
     writeLog({ event: "agent_joined", roomId: ctx.room.name });
 
     const local = ctx.room.localParticipant;
