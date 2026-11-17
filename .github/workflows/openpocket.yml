@@ -190,6 +190,9 @@ jobs:
             setup, a spike), add lines, in order, "OpenPocket-Step: <one short instruction>", with every
             command in `backticks` (for example "OpenPocket-Step: On your Pi, run `git checkout feat/x`").
             Take them from your work and the README. Also add one line
+            If the task can't work until the owner does something by hand (add a repo secret, run a
+            one-time script), also add "OpenPocket-Manual: <one step>" lines, and "OpenPocket-Secret: <NAME>"
+            for each missing secret: the task then shows under "Do on the computer" until they tap Done.
             "OpenPocket-Safe: <plain sentence>" saying whether merging is safe (for example "Spike only,
             doesn't touch the app, safe to merge.").
           claude_args: >-
