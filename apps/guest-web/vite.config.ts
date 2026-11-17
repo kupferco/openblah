@@ -1,7 +1,9 @@
 import { defineConfig } from "vite";
 
 // The page lives at /j/<token>; unknown paths fall back to index.html in dev.
-export default defineConfig({
+export default defineConfig(({ command }) => ({
+  // Served under /guest/ in the Vercel build (apps/landing/vercel.json rewrites /j/* to it).
+  base: command === "build" ? "/guest/" : "/",
   server: { port: 5174 },
   resolve: {
     alias: [
@@ -23,4 +25,4 @@ export default defineConfig({
       },
     ],
   },
-});
+}));

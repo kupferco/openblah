@@ -1,6 +1,6 @@
 # Guest page (apps/guest-web)
 
-The page behind `https://openblah.web.app/j/<token>`. Built only on `@openblah/web`. Desktop Chrome, Safari and Firefox first; mobile is T30.
+The page behind `https://openblah.vercel.app/j/<token>`. Built only on `@openblah/web`. Desktop Chrome, Safari and Firefox first; mobile is T30.
 
 Flow: open the link, enter a name, read and tick the consent line (hidden when the room's AI is off), check the microphone (permission and level meter), join. In the call: participants, agent state, mute, leave. Guests get no agent or host controls.
 
@@ -18,12 +18,13 @@ pnpm --filter @openblah/guest-web e2e      # Playwright smoke test, server mocke
 
 Build-time settings: `VITE_OPENBLAH_API_URL` (server base incl. `/v1`, default `/v1`), `VITE_LIVEKIT_URL` (only if the server sends none), `VITE_MOCK_SERVER=1` (preview builds only: token `demo` is a valid fake invite, anything else is invalid; joining needs a real room). There is no login on this page.
 
-## Deploy (Firebase Hosting)
+## Deploy (Vercel)
 
-`firebase.json` serves `apps/guest-web/dist` on site `openblah` with an SPA rewrite. `.github/workflows/guest-web.yml` builds and deploys: a preview channel per pull request (fake server, reported to Viber, opens `/j/demo`) and the live site on `main` (with the Viber deploy report).
+The page is served by the existing Vercel project `openblah` (root directory `apps/landing`, https://openblah.vercel.app/), so it needs no new project, token or secret. `apps/landing/vercel.json` runs `apps/landing/build-vercel.sh`, which builds the landing page, then builds guest-web (base `/guest/`) into `dist/guest`; a rewrite sends `/j/*` to `/guest/index.html`. Vercel's PR preview therefore shows the guest page at `<preview url>/j/demo`.
 
-**Dani: manual steps**
+- **Mock server.** `VITE_MOCK_SERVER=1` is set only when `VERCEL_ENV=preview`; production builds never get it.
+- **Settings.** Set `VITE_OPENBLAH_API_URL` and `VITE_LIVEKIT_URL` as Vercel environment variables for production. The server must allow CORS from the site.
+- **Needs** "Include source files outside of the Root Directory" enabled (Vercel default).
+- Build, typecheck and unit tests run in the normal CI workflow (`pnpm typecheck`, `pnpm test`, `pnpm build`).
 
-1. Create the Firebase project and the `openblah` Hosting site so `openblah.web.app` exists (or tell us the real site ID and update `site` in `firebase.json` and `projectId`).
-2. Add the repo secret `FIREBASE_SERVICE_ACCOUNT` (service account JSON with Firebase Hosting Admin; until it exists the deploy step is skipped, not failed) and, if the project ID is not `openblah`, the variable `FIREBASE_PROJECT_ID`. Set the variables `OPENBLAH_API_URL` and `LIVEKIT_URL` for production builds. The server must allow CORS from the site.
-3. Test in desktop Chrome, Safari and Firefox with a real invite from the `@openblah/web` dev page.
+Manual test: desktop Chrome, Safari and Firefox with a real invite from the `@openblah/web` dev page.
