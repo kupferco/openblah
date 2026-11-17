@@ -44,3 +44,19 @@ export type { TokenVerifier, UserRecord, VerifiedUser } from "./accounts.js";
 export { OpenBlahServerClient } from "./client.js";
 export { HttpWorkerWaker, NoopWaker } from "./worker.js";
 export { RateLimiter } from "./ratelimit.js";
+export {
+  DEFAULT_LIMITS,
+  DEFAULT_PRICES,
+  UsageService,
+  parsePrices,
+  webhookNotifier,
+} from "./usage.js";
+export type {
+  CostAlert,
+  CostBreakdown,
+  PriceTable,
+  RoomUsage,
+  StopReason,
+  UsageLimits,
+  UsageReport,
+} from "./usage.js";
