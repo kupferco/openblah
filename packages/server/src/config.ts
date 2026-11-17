@@ -5,6 +5,7 @@ import { FirestoreStorage } from "./firestore.js";
 import { KeyCipher } from "./crypto.js";
 import { apiKeyId, KeyStore, parseProductKeys, type ProviderKeys } from "./keys.js";
 import { RealLiveKit } from "./livekit.js";
+import { HttpWorkerWaker } from "./worker.js";
 import { MemoryStorage } from "./storage.js";
 import { DEFAULT_TRIAL_LIMITS, TrialService } from "./trial.js";
 import type { Storage } from "./types.js";
@@ -93,6 +94,9 @@ export function createAppFromEnv(env: Env = process.env) {
     trial,
     verifier,
     agentSecret: env.OPENBLAH_AGENT_SECRET || undefined,
+    worker: env.AGENT_WORKER_URL
+      ? new HttpWorkerWaker(env.AGENT_WORKER_URL, env.AGENT_WORKER_AUTH === "iam")
+      : undefined,
     livekitUrl: env.LIVEKIT_URL,
     ...(env.OPENBLAH_INVITE_BASE_URL ? { inviteBaseUrl: env.OPENBLAH_INVITE_BASE_URL } : {}),
     ...(env.OPENBLAH_AGENT_NAME ? { agentName: env.OPENBLAH_AGENT_NAME } : {}),

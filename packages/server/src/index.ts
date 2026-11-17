@@ -16,6 +16,7 @@ export type {
   Room,
   Storage,
   TokenRequest,
+  WorkerWaker,
 } from "./types.js";
 export { KeyCipher } from "./crypto.js";
 export type { Sealed } from "./crypto.js";
@@ -41,3 +42,5 @@ export type { TrialLimits, TrialStatus } from "./trial.js";
 export { FirebaseTokenVerifier, PREVIEW_TEST_EMAIL } from "./accounts.js";
 export type { TokenVerifier, UserRecord, VerifiedUser } from "./accounts.js";
 export { OpenBlahServerClient } from "./client.js";
+export { HttpWorkerWaker, NoopWaker } from "./worker.js";
+export { RateLimiter } from "./ratelimit.js";

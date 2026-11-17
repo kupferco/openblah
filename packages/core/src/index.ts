@@ -5,5 +5,6 @@
  * @packageDocumentation
  */
 export * from "./client.js";
+export * from "./warmup.js";
 export * from "./api.js";
 export * from "./protocol.js";
