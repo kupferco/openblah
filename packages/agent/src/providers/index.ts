@@ -45,7 +45,25 @@ type Env = Record<string, string | undefined>;
 /**
  * Providers from the environment alone (server default level). Gemini, Deepgram
  * and Cartesia unless OPENBLAH_LLM_PROVIDER / _STT_ / _TTS_ say otherwise.
+ * Keys for the room (trial or user keys) replace the environment's for those vendors.
  */
-export function defaultProviders(env: Env = process.env): ProviderSet {
-  return providersFromLevels({}, env);
+export function defaultProviders(
+  env: Env = process.env,
+  keys?: { gemini: string; deepgram: string; cartesia: string },
+): ProviderSet {
+  return providersFromLevels({}, withRoomKeys(env, keys));
+}
+
+/** The environment with a room's own vendor keys laid over it. */
+export function withRoomKeys(
+  env: Env,
+  keys?: { gemini: string; deepgram: string; cartesia: string },
+): Env {
+  if (!keys) return env;
+  return {
+    ...env,
+    GEMINI_API_KEY: keys.gemini,
+    DEEPGRAM_API_KEY: keys.deepgram,
+    CARTESIA_API_KEY: keys.cartesia,
+  };
 }
