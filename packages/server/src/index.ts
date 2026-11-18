@@ -60,3 +60,10 @@ export type {
   UsageLimits,
   UsageReport,
 } from "./usage.js";
+export { McpOAuthService, McpOAuthError, parsePreregistered } from "./mcp-oauth.js";
+export type {
+  McpConnectionInfo,
+  McpConnectionRecord,
+  McpConnectionStatus,
+  McpOAuthOptions,
+} from "./mcp-oauth.js";

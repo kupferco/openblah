@@ -1,6 +1,8 @@
 import { Room, RoomEvent, ConnectionState, type Participant } from "livekit-client";
+import { connectMcpServer, type ConnectMcpServerOptions } from "./mcp.js";
 import {
   OpenBlahApi,
+  type McpConnection,
   type ConsentGrant,
   type ConsentStatus,
   type CreateInviteOptions,
@@ -356,6 +358,30 @@ export class OpenBlahClient {
       reliable: true,
       topic: CONTROL_TOPIC,
     });
+  }
+
+  // ---- MCP servers (OAuth connect) ----
+
+  /**
+   * Connect one of the person's MCP servers: runs the OAuth sign-in through
+   * `openAuthorization` and resolves once it is connected. Works before or during a call.
+   * Voice never carries credentials.
+   */
+  connectMcpServer(url: string, options: ConnectMcpServerOptions): Promise<McpConnection> {
+    return connectMcpServer(this.requireApi(), url, options);
+  }
+
+  listMcpServers(userId?: string): Promise<McpConnection[]> {
+    return this.requireApi().listMcpConnections(userId);
+  }
+
+  testMcpServer(id: string, userId?: string) {
+    return this.requireApi().testMcpConnection(id, userId);
+  }
+
+  /** Disconnect a server; its stored tokens are deleted. */
+  disconnectMcpServer(id: string, userId?: string): Promise<void> {
+    return this.requireApi().disconnectMcp(id, userId);
   }
 
   private requireApi(): OpenBlahApi {

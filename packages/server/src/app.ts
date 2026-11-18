@@ -15,6 +15,7 @@ import {
   type ProductKeyConfig,
   type ProviderKeys,
 } from "./keys.js";
+import { callbackPage, McpOAuthError, type McpOAuthService } from "./mcp-oauth.js";
 import { RateLimiter } from "./ratelimit.js";
 import type { TrialService } from "./trial.js";
 import { UsageService, type UsageReport } from "./usage.js";
@@ -43,6 +44,8 @@ export interface AppDeps {
   trial?: { keys: ProviderKeys; service: TrialService };
   /** Usage log, caps and the monthly cost counter. Default: built-in limits and prices. */
   usage?: UsageService;
+  /** Per-user OAuth connections to MCP servers. Without it the connection endpoints answer 501. */
+  mcpOAuth?: McpOAuthService;
   /** Verifies Firebase ID tokens for the standalone app's own users (`/v1/me`). */
   verifier?: TokenVerifier;
   /** Secret the agent worker uses on `/internal`. Without it `/internal` is off. */
@@ -166,6 +169,32 @@ export function createApp(deps: AppDeps): Hono {
   const rl = deps.joinRateLimit ?? { max: 10, windowMs: 60_000 };
   const ipLimiter = new RateLimiter(rl.max, rl.windowMs);
   const tokenLimiter = new RateLimiter(rl.max * 2, rl.windowMs);
+  /** Job metadata for the agent, with each person's saved MCP servers merged in (no tokens). */
+  const dispatchMetadata = async (room: Room): Promise<string> => {
+    if (!deps.mcpOAuth) return dispatchMetadataJson(room);
+    const owners = new Set([room.hostUserId]);
+    for (const p of await storage.listParticipants(room.id)) {
+      if (!p.removedAt && p.role !== "guest") owners.add(p.userId);
+    }
+    const own = (room.mcp?.servers as { url?: unknown; ownerId?: unknown }[] | undefined) ?? [];
+    const servers: unknown[] = [...own];
+    for (const ownerId of owners) {
+      for (const conn of await deps.mcpOAuth.connected(ownerId)) {
+        // Host-defined servers win over a saved one for the same URL.
+        if (
+          own.some((s) => s.url === conn.serverUrl && (s.ownerId ?? room.hostUserId) === ownerId)
+        ) {
+          continue;
+        }
+        servers.push({ id: conn.id, url: conn.serverUrl, ownerId, connectionId: conn.id });
+      }
+    }
+    if (servers.length === 0) return dispatchMetadataJson(room);
+    return dispatchMetadataJson({
+      ...room,
+      mcp: { ownerId: room.hostUserId, ...room.mcp, servers },
+    });
+  };
   const consentText = (room: Room) => renderConsentText(room.agentName, deps.processors);
 
   app.get("/health", (c) => c.json({ ok: true }));
@@ -693,7 +722,7 @@ export function createApp(deps: AppDeps): Hono {
     await worker.wake().catch(() => false);
     const { dispatchId, created } = await livekit.dispatchAgent(
       room.id,
-      dispatchMetadataJson(room),
+      await dispatchMetadata(room),
     );
     return c.json({ roomId: room.id, dispatchId, created }, created ? 201 : 200);
   });
@@ -766,8 +795,62 @@ export function createApp(deps: AppDeps): Hono {
     });
   };
 
+  // MCP OAuth connections. Same handlers for a product user and a standalone-app user.
+  const mountMcpRoutes = (r: Hono, ownerOf: (c: Context) => string) => {
+    const svc = (): McpOAuthService | null => deps.mcpOAuth ?? null;
+    const guard =
+      (fn: (s: McpOAuthService, c: Context) => Promise<Response>) =>
+      async (c: Context): Promise<Response> => {
+        const s = svc();
+        if (!s) return c.json({ error: "MCP connections are not configured" }, 501);
+        try {
+          return await fn(s, c);
+        } catch (e) {
+          if (e instanceof McpOAuthError) return c.json({ error: e.message }, e.status);
+          throw e;
+        }
+      };
+    r.post(
+      "/mcp/connections",
+      guard(async (s, c) => {
+        const body = await readBody(c);
+        const url = body ? str(body.url, 2000) : null;
+        if (!body || !url) return c.json({ error: "url is a required string" }, 400);
+        const opt = (v: unknown, max: number) => (v === undefined ? undefined : str(v, max));
+        const name = opt(body.name, MAX_NAME);
+        const scope = opt(body.scope, 500);
+        const returnUrl = opt(body.returnUrl, 2000);
+        if (name === null || scope === null || returnUrl === null) {
+          return c.json({ error: "name, scope and returnUrl must be non-empty strings" }, 400);
+        }
+        const started = await s.start(ownerOf(c), { url, name, scope, returnUrl });
+        return c.json(started, 201);
+      }),
+    );
+    r.get(
+      "/mcp/connections",
+      guard(async (s, c) => c.json({ connections: await s.list(ownerOf(c)) })),
+    );
+    r.get(
+      "/mcp/connections/:id",
+      guard(async (s, c) => c.json(await s.get(ownerOf(c), c.req.param("id") ?? ""))),
+    );
+    r.post(
+      "/mcp/connections/:id/test",
+      guard(async (s, c) => c.json(await s.test(ownerOf(c), c.req.param("id") ?? ""))),
+    );
+    r.delete(
+      "/mcp/connections/:id",
+      guard(async (s, c) => {
+        await s.disconnect(ownerOf(c), c.req.param("id") ?? "");
+        return c.body(null, 204);
+      }),
+    );
+  };
+
   const byApiKey = new Hono();
   mountKeyRoutes(byApiKey, (c) => c.req.param("userId") as string);
+  mountMcpRoutes(byApiKey, (c) => c.req.param("userId") as string);
   v1.route("/users/:userId", byApiKey);
 
   // Standalone app users: a verified Firebase ID token, not the product API key.
@@ -792,7 +875,26 @@ export function createApp(deps: AppDeps): Hono {
   mountKeyRoutes(me as unknown as Hono, (c) =>
     (c as unknown as { get(k: string): string }).get("uid"),
   );
+  mountMcpRoutes(me as unknown as Hono, (c) =>
+    (c as unknown as { get(k: string): string }).get("uid"),
+  );
   app.route("/v1/me", me);
+
+  // The consent redirect lands here, in the user's browser: no API key. The
+  // one-time `state` (checked against its stored hash) says which sign-in this is.
+  app.get("/v1/mcp/callback", async (c) => {
+    c.header("Cache-Control", "no-store");
+    c.header("Referrer-Policy", "no-referrer");
+    if (!deps.mcpOAuth)
+      return c.html(callbackPage(false, "MCP connections are not configured."), 501);
+    const r = await deps.mcpOAuth.complete({
+      state: c.req.query("state"),
+      code: c.req.query("code"),
+      error: c.req.query("error"),
+    });
+    if (r.returnUrl) return c.redirect(r.returnUrl, 302);
+    return c.html(callbackPage(r.ok, r.message), r.ok ? 200 : 400);
+  });
 
   // Agent worker only: the one place provider keys leave the store, to the
   // server-side worker, never to a client.
@@ -878,6 +980,33 @@ export function createApp(deps: AppDeps): Hono {
       available: trial.available && verdict.available,
       stop: verdict.stop ?? (trial.available ? undefined : "trial_used"),
     });
+  });
+  // The agent asks for a connection's current token when it connects and on each
+  // request. Only for people who are in the room, and only the owner's own connection.
+  internal.post("/rooms/:id/mcp-token", async (c) => {
+    if (!deps.mcpOAuth) return c.json({ error: "MCP connections are not configured" }, 501);
+    const room = await storage.getRoom(c.req.param("id"));
+    if (!room) return c.json({ error: "room not found" }, 404);
+    const body = await readBody(c);
+    const ownerId = body ? str(body.ownerId, MAX_ID) : null;
+    const connectionId = body ? str(body.connectionId, MAX_ID) : null;
+    if (!ownerId || !connectionId) {
+      return c.json({ error: "ownerId and connectionId are required strings" }, 400);
+    }
+    const p = ownerId === room.hostUserId ? null : await storage.getParticipant(room.id, ownerId);
+    if (ownerId !== room.hostUserId && (!p || p.removedAt || p.role === "guest")) {
+      return c.json({ error: "not a member of this room" }, 403);
+    }
+    try {
+      return c.json(
+        await deps.mcpOAuth.accessToken(ownerId, connectionId, {
+          forceRefresh: body?.refresh === true,
+        }),
+      );
+    } catch (e) {
+      if (e instanceof McpOAuthError) return c.json({ error: e.message }, e.status);
+      throw e;
+    }
   });
   app.route("/internal", internal);
 

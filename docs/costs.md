@@ -73,13 +73,12 @@ hostedCostGbp, capGbp }`.
    `scripts/check-gcp-budget.sh <project-id> [billing-account-id]`. It prints `budget ok`, or a
    `::viber-manual::` marker with the exact `gcloud billing budgets create ...` command. A budget alerts
    but does not stop spend by itself, which is why the server has its own cap.
-2. **Provider spend limits**, where offered:
-   - OpenAI (if used): Settings, Limits, set a monthly budget and a lower email threshold.
-   - Deepgram: Billing, usage limits / auto-recharge off, so a prepaid balance is the limit.
-   - ElevenLabs (if used): set the usage-based billing cap on the subscription page.
-   - Cartesia: stay on a plan with a fixed credit allowance, no auto top-up.
-   - Google AI Studio / Cloud: keep the Gemini free tier as the default; set a Cloud Console quota
-     on the Generative Language API for the project.
+2. **Provider spend limits** (done by Dani):
+   - GCP spend caps are set on the OpenBlah project, for Cloud Run and the Gemini API.
+   - Deepgram: auto-reload is off, so the prepaid balance is the limit.
+   - Cartesia: on the free plan, so there is no overage.
+   - OpenAI and ElevenLabs: no account exists, so no limit is needed. If either is added later, set a
+     monthly budget (OpenAI: Settings, Limits; ElevenLabs: the usage-based billing cap) first.
 3. **LiveKit free tier.** Open the LiveKit Cloud pricing page and compare it with this table, then tell
    the session if anything differs. Last known values (unverified, 2026-11-17): free "Build" plan with
    about 5,000 WebRTC participant minutes a month, a small number of concurrent participants (about

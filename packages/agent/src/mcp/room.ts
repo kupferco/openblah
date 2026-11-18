@@ -1,5 +1,5 @@
 import type { llm } from "@livekit/agents";
-import { connectMcp, type McpConnection } from "./client.js";
+import { connectMcp, type McpConnection, type McpTokenProvider } from "./client.js";
 import { buildMcpTools, type ConnectedServer, type McpVoiceHooks } from "./tools.js";
 import type { ActionLog, McpRoomConfig } from "./types.js";
 import type { LlmProvider } from "../providers/types.js";
@@ -16,16 +16,24 @@ export async function openMcpRoom(opts: {
   provider: Pick<LlmProvider, "formatToolSchema">;
   log: ActionLog;
   hooks: McpVoiceHooks;
-  connect?: (url: string, token?: string) => Promise<McpConnection>;
+  connect?: (url: string, token?: string | McpTokenProvider) => Promise<McpConnection>;
+  /** Fetches a saved connection's current token from the server (OAuth connections). */
+  fetchToken?: (ownerId: string, connectionId: string, refresh?: boolean) => Promise<string>;
 }): Promise<McpRoom> {
   const connect = opts.connect ?? connectMcp;
   const servers: ConnectedServer[] = [];
   for (const s of opts.config.servers) {
     try {
-      const connection = await connect(s.url, s.userToken ?? opts.config.userToken);
+      const ownerId = s.ownerId ?? opts.config.ownerId ?? "";
+      const { fetchToken } = opts;
+      const token: string | McpTokenProvider | undefined =
+        s.connectionId && fetchToken
+          ? (o) => fetchToken(ownerId, s.connectionId as string, o?.refresh)
+          : (s.userToken ?? opts.config.userToken);
+      const connection = await connect(s.url, token);
       servers.push({
         id: s.id,
-        ownerId: s.ownerId ?? opts.config.ownerId ?? "",
+        ownerId,
         connection,
         tools: await connection.listTools(),
       });

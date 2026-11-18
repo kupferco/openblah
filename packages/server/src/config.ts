@@ -3,6 +3,7 @@ import { createApp } from "./app.js";
 import { parseApiKeys } from "./auth.js";
 import { FirestoreStorage } from "./firestore.js";
 import { KeyCipher } from "./crypto.js";
+import { McpOAuthService, parsePreregistered } from "./mcp-oauth.js";
 import { apiKeyId, KeyStore, parseProductKeys, type ProviderKeys } from "./keys.js";
 import { RealLiveKit } from "./livekit.js";
 import { HttpWorkerWaker } from "./worker.js";
@@ -44,9 +45,22 @@ export function createAppFromEnv(env: Env = process.env) {
   };
 
   // BYOK needs the encryption secret; without it the key endpoints answer 501.
-  const keyStore = env.KEY_ENCRYPTION_SECRET
-    ? new KeyStore(storage, new KeyCipher(env.KEY_ENCRYPTION_SECRET))
-    : undefined;
+  const cipher = env.KEY_ENCRYPTION_SECRET ? new KeyCipher(env.KEY_ENCRYPTION_SECRET) : undefined;
+  const keyStore = cipher ? new KeyStore(storage, cipher) : undefined;
+
+  // MCP OAuth needs the same cipher and this server's public URL for the callback.
+  const mcpOAuth =
+    cipher && env.OPENBLAH_PUBLIC_URL
+      ? new McpOAuthService(storage, cipher, {
+          callbackUrl: `${env.OPENBLAH_PUBLIC_URL.replace(/\/+$/, "")}/v1/mcp/callback`,
+          returnUrlPrefixes: (env.OPENBLAH_MCP_RETURN_URLS ?? "")
+            .split(",")
+            .map((p) => p.trim())
+            .filter(Boolean),
+          preregistered: parsePreregistered(env.OPENBLAH_MCP_OAUTH_CLIENTS),
+          allowLocal: env.OPENBLAH_MCP_ALLOW_LOCAL === "true",
+        })
+      : undefined;
 
   // Product keys: per API key (JSON), plus the self-hosted default from the plain provider variables.
   const productKeys: Record<string, ReturnType<typeof parseProductKeys>[string]> = {};
@@ -108,6 +122,7 @@ export function createAppFromEnv(env: Env = process.env) {
     livekit,
     apiKeys,
     keyStore,
+    mcpOAuth,
     productKeys,
     trial,
     verifier,
