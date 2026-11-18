@@ -32,6 +32,7 @@
       groups.length
         ? h("button", { id: "states-btn", onclick: () => panel.classList.toggle("open") }, "States")
         : "",
+      window.OBTheme ? window.OBTheme.button() : "",
     );
     const panel = h("div", { class: "states", id: "states" });
     // ?key=value in the URL presets a state (also used for the screenshots)
@@ -188,5 +189,96 @@
     );
     return root;
   }
-  window.OB = { $, h, CONSENT, PEOPLE, chrome, meter, callView };
+
+  /* Fake finished calls. Used by the app's History and by the guest's "View call history". */
+  const CALLS = {
+    family: {
+      name: "Family chat",
+      when: "Just now",
+      who: "Maria, Tom",
+      dur: "6 min",
+      ai: true,
+      summary:
+        "Maria and Tom planned the weekend: lunch first, then the 14:20 flight pick-up. Tom brings the car seat.",
+      transcript: [
+        ["Maria", "00:04", "Hi all. Can we sort out Saturday?"],
+        ["Tom", "00:11", "Sure. What time does the flight land?"],
+        ["Blah", "00:19", "The flight lands at 14:20, so you have time for lunch first."],
+        ["Maria", "00:31", "Perfect. Tom, can you bring the car seat?"],
+        ["Tom", "00:38", "Yes, I'll put it in the car tonight."],
+      ],
+    },
+    sync: {
+      name: "Project sync",
+      when: "Yesterday",
+      who: "Tom, Ana",
+      dur: "32 min",
+      ai: true,
+      summary: "Agreed to ship the invite flow on Friday; Tom owns the consent text.",
+      transcript: [
+        ["Ana", "00:06", "Where are we on the invite flow?"],
+        ["Tom", "00:15", "Nearly done. The consent text still needs a final pass."],
+        ["Blah", "00:27", "Noted: Tom owns the consent text. Target is Friday."],
+        ["Ana", "00:40", "Good. Let's ship it Friday then."],
+      ],
+    },
+    us: {
+      name: "Just us",
+      when: "Mon",
+      who: "Maria",
+      dur: "12 min",
+      ai: false,
+      summary: "",
+      transcript: [],
+    },
+  };
+
+  /* Call detail: summary + transcript. back = optional {label, onclick}. */
+  function callDetail(c, back) {
+    return h(
+      "div",
+      { class: "screen" },
+      back
+        ? h(
+            "button",
+            {
+              class: "btn",
+              "aria-label": "Back",
+              style: "align-self:flex-start;min-height:36px",
+              onclick: back,
+            },
+            "←",
+          )
+        : "",
+      h("h1", {}, c.name),
+      h("p", { class: "small dim" }, c.when + " · " + c.who + " · " + c.dur),
+      c.ai
+        ? [
+            h("h2", {}, "Summary"),
+            h("div", { class: "card small" }, c.summary),
+            h("h2", {}, "Transcript"),
+            h(
+              "div",
+              { class: "list" },
+              c.transcript.map(([who, at, text]) =>
+                h(
+                  "div",
+                  { class: "card small" },
+                  h(
+                    "b",
+                    {},
+                    who,
+                    " ",
+                    who === "Blah" ? h("span", { class: "badge ai" }, "AI") : "",
+                    h("span", { class: "dim" }, " · " + at),
+                  ),
+                  h("p", {}, text),
+                ),
+              ),
+            ),
+          ]
+        : h("div", { class: "notice warn" }, "No notes: the AI was off for this call."),
+    );
+  }
+  window.OB = { $, h, CONSENT, PEOPLE, CALLS, chrome, meter, callView, callDetail };
 })();

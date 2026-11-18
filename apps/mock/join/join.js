@@ -58,6 +58,18 @@
           : "",
         h("div", { class: "spacer" }),
         next,
+        h(
+          "button",
+          {
+            class: "small dim",
+            style: "align-self:center;background:none;border:0;padding:8px 16px;min-height:36px",
+            onclick: () => {
+              s.step = "declined";
+              render();
+            },
+          },
+          "Not now",
+        ),
       ];
     } else if (s.step === "mic") {
       const m = h("div", { class: "meter" });
@@ -106,6 +118,28 @@
       queueMicrotask(() => {
         stopMeter = meter(m, () => s.mic === "ok");
       });
+    } else if (s.step === "declined") {
+      body = [
+        h("div", { class: "spacer" }),
+        h("h1", { style: "text-align:center" }, "You didn't join"),
+        h(
+          "p",
+          { class: "dim", style: "text-align:center" },
+          "No problem. You can close this page, or use the invite link again any time.",
+        ),
+        h("div", { class: "spacer" }),
+        h(
+          "button",
+          {
+            class: "btn block",
+            onclick: () => {
+              s.step = "name";
+              render();
+            },
+          },
+          "Join after all",
+        ),
+      ];
     } else {
       body = [
         h("div", { style: "height:40px" }),
@@ -163,6 +197,7 @@
           ["name", "Name"],
           ["mic", "Mic check"],
           ["joined", "Joined"],
+          ["declined", "Not now"],
         ],
       },
     ],

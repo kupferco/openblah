@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Call screen · OpenBlah mock</title>
     <link rel="stylesheet" href="../shared/base.css" />
+    <script src="../shared/theme.js"></script>
     <link rel="stylesheet" href="../shared/call.css" />
     <style>
       @media (min-width: 900px) {
@@ -24,7 +25,7 @@
     </div>
     <script src="../shared/mock.js"></script>
     <script>
-      const { chrome, callView, h } = OB;
+      const { chrome, callView, callDetail, CALLS, h } = OB;
       const s = {
         people: 3,
         agent: "listening",
@@ -32,9 +33,23 @@
         selfMuted: false,
         speaker: 1,
         left: false,
+        history: false,
       };
       const host = document.getElementById("host");
       function render() {
+        if (s.left && s.history) {
+          // reached through the same invite link: no account
+          const d = callDetail(CALLS.family, () => {
+            s.history = false;
+            render();
+          });
+          d.style.padding = "0";
+          host.replaceChildren(
+            d,
+            h("p", { class: "small dim" }, "Opened with your invite link. No account needed."),
+          );
+          return;
+        }
         if (s.left) {
           host.replaceChildren(
             h(
@@ -55,6 +70,22 @@
                   },
                 },
                 "Rejoin",
+              ),
+              h(
+                "button",
+                {
+                  class: "btn",
+                  onclick: () => {
+                    s.history = true;
+                    render();
+                  },
+                },
+                "View call history",
+              ),
+              h(
+                "a",
+                { href: "../app/index.html", class: "small" },
+                "Keep your calls: create a free account",
               ),
             ),
           );
