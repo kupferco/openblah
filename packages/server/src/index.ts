@@ -79,3 +79,10 @@ export type {
   McpConnectionStatus,
   McpOAuthOptions,
 } from "./mcp-oauth.js";
+export {
+  canReadHistory,
+  cleanupExpiredHistory,
+  DEFAULT_RETENTION,
+  GUEST_HISTORY_DAYS,
+} from "./history.js";
+export type { CallHistory, HistoryListItem, Retention } from "./history.js";

@@ -175,6 +175,32 @@ export interface StartMcpConnectionOptions {
   returnUrl?: string;
 }
 
+/** How long saved history is kept. */
+export type HistoryRetention = "30d" | "1y" | "forever";
+
+/** One past call in the list (no transcript). */
+export interface CallListItem {
+  roomId: string;
+  hostDisplayName: string;
+  participants: string[];
+  summary: string;
+  savedAt: string;
+  /** When it is deleted automatically, or null when kept until the host deletes it. */
+  expiresAt: string | null;
+}
+
+/** One past call, in full. Only saved when the host turned "save notes" on; never audio. */
+export interface CallRecord extends CallListItem {
+  hostUserId: string;
+  transcript: { speaker: string; text: string; at: string }[];
+  notes: string[];
+  actions: { text: string; owner?: string; done: boolean }[];
+  language: "en" | "pt";
+  actionLog: { text: string; at: string }[];
+  retention: HistoryRetention;
+  startedAt?: string;
+}
+
 export interface OpenBlahApiOptions {
   /** Server base URL including `/v1`, e.g. `https://api.example.com/v1`. */
   baseUrl: string;
@@ -392,7 +418,50 @@ export class OpenBlahApi {
     });
   }
 
+  // ---- Call history (people who were in the call; the host can delete) ----
+
+  listCalls(actorUserId: string) {
+    return this.call<{ calls: CallListItem[] }>("GET", "/history", {
+      query: { actorUserId },
+      auth: true,
+    }).then((r) => r.calls);
+  }
+
+  getCall(roomId: string, actorUserId: string) {
+    return this.call<CallRecord>("GET", `/history/${enc(roomId)}`, {
+      query: { actorUserId },
+      auth: true,
+    });
+  }
+
+  /** Host only: remove everything stored for this call. */
+  deleteCall(roomId: string, actorUserId: string) {
+    return this.call<{ roomId: string; deleted: true; existed: boolean }>(
+      "DELETE",
+      `/history/${enc(roomId)}`,
+      { query: { actorUserId }, auth: true },
+    );
+  }
+
+  /** Host only: turn saving notes on or off, and choose how long history is kept. */
+  updateHistorySettings(
+    roomId: string,
+    actorUserId: string,
+    settings: { saveNotes?: boolean; retention?: HistoryRetention },
+  ) {
+    return this.call<{ saveNotes: boolean; retention: HistoryRetention }>(
+      "PUT",
+      `/rooms/${enc(roomId)}/history-settings`,
+      { body: { actorUserId, ...settings }, auth: true },
+    );
+  }
+
   // ---- Guests (public endpoints, no credentials) ----
+
+  /** A guest reads the call they joined, read-only, through their invite token (30 days). */
+  getCallWithInvite(token: string) {
+    return this.call<CallRecord>("GET", `/invites/${enc(token)}/history`);
+  }
 
   getInvite(token: string) {
     return this.call<InvitePreview>("GET", `/invites/${enc(token)}`);

@@ -73,6 +73,41 @@ the agent off nothing goes to STT, LLM or TTS. The server keeps a usage log per 
 duration and idle limits, per-user and per-host monthly minute caps, and a £50/month cap on the
 hosted trial key. Prices, settings and the owner steps are in [docs/costs.md](docs/costs.md).
 
+## Privacy and data
+
+_Not legal advice. Have a lawyer check this before you handle personal data of people in the UK or Brazil._
+
+**What is stored.** Audio is never stored: it streams to speech-to-text and is discarded. A call's
+transcript, notes, action list, summary and action log are stored **only if the host turns "save notes" on**
+for the room. They are shown only to people who were in that call (app users by user ID; guests through
+their invite link for 30 days) and are never sent to anyone (no email, no push). The host can delete a
+call's history at any time (`DELETE /v1/history/:roomId`); everything else is deleted automatically
+after the room's retention: 30 days (default), 1 year or until deleted
+(`PUT /v1/rooms/:id/history-settings`). A scheduled job (Cloud Scheduler calling
+`POST /internal/history/cleanup`, see [docs/deploy.md](docs/deploy.md)) does the cleanup.
+
+**Processors.** These third parties handle call data in the default setup. Each provider's own
+retention and data-location terms apply and change; **check each before launch** (open item, not verified
+in code). Paid-tier or enterprise terms differ from free-tier terms, which is why `sensitive` rooms refuse free-tier keys.
+
+| Processor        | Does                                                 | Data it sees                | Where to check terms                          |
+| ---------------- | ---------------------------------------------------- | --------------------------- | --------------------------------------------- |
+| LiveKit          | Relays call audio (WebRTC)                           | Live audio, participant ids | LiveKit Cloud privacy policy and DPA          |
+| Deepgram         | Speech to text (default)                             | Speech audio per speaker    | Deepgram data-retention / "mip" opt-out docs  |
+| Google Gemini    | Language model (default)                             | Transcript text, tool data  | Gemini API terms (paid vs free tier training) |
+| Cartesia         | Text to speech (default)                             | The agent's reply text      | Cartesia privacy policy and DPA               |
+| Your own choices | OpenAI, Claude, AssemblyAI, ElevenLabs when selected | As above                    | That provider's terms                         |
+
+The same list is in the consent line every participant accepts (`DEFAULT_PROCESSORS` in
+`packages/server/src/consent.ts`; change it with the `processors` option when you use other providers).
+
+**UK GDPR / LGPD notes.**
+
+- _Lawful basis:_ consent of each participant, recorded with the text version and time before the agent listens (UK GDPR Art. 6(1)(a); LGPD Art. 7, I). Guests can still join with the agent off.
+- _Minimisation:_ no audio is stored; history is off unless the host enables it; contact details are not part of history.
+- _Retention and deletion:_ time-limited by default (30 days); the host can delete any time, which removes the history and summary. Handle erasure requests from other participants through the host.
+- _International transfers:_ the processors above may process data outside the UK/EU/Brazil; confirm transfer terms (SCCs / adequacy) with each.
+
 ## Licence
 
 Open source under the [MIT licence](LICENSE).

@@ -2,6 +2,7 @@ import type { UserRecord } from "./accounts.js";
 import type { KeyProvider, StoredKey } from "./keys.js";
 import type { SettingsLevel } from "./settings.js";
 import type { McpConnectionRecord } from "./mcp-oauth.js";
+import type { CallHistory } from "./history.js";
 
 export type AgentMode = "on" | "off" | "ask";
 /** host and member are app users; guest joined through an invite link. */
@@ -40,6 +41,11 @@ export interface Room {
   agentAwaitingConsent?: boolean;
   /** Pending "please bring the agent in" requests from non-hosts, for the host to approve. */
   agentRequests?: AgentRequest[];
+
+  /** Host turned "save notes" on: the transcript, notes and summary are kept (T19). Default off. */
+  saveNotes?: boolean;
+  /** How long saved history is kept (Q4). Default "30d". */
+  retention?: "30d" | "1y" | "forever";
 
   /** Set when the host ends the room; no more tokens or invites. */
   endedAt?: string;
@@ -143,6 +149,18 @@ export interface Storage {
   /** One summary per room; saving again replaces it. */
   saveSummary(summary: CallSummary): Promise<void>;
   getSummary(roomId: string): Promise<CallSummary | null>;
+  deleteSummary(roomId: string): Promise<void>;
+
+  /** Call history (T19): one per room; saving again replaces it. */
+  saveHistory(history: CallHistory): Promise<void>;
+  getHistory(roomId: string): Promise<CallHistory | null>;
+  /** Histories of calls these room ids. Used to list a person's calls. */
+  listHistories(roomIds: string[]): Promise<CallHistory[]>;
+  /** Every stored history (cleanup job). */
+  listAllHistories(): Promise<CallHistory[]>;
+  deleteHistory(roomId: string): Promise<void>;
+  /** Rooms a user took part in (host or participant, not guests). */
+  listRoomIdsForUser(userId: string): Promise<string[]>;
 }
 
 export interface TokenRequest {
