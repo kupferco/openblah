@@ -10,8 +10,9 @@ npm run build
 if [ "${VERCEL_ENV:-}" = "preview" ]; then MOCK=1; else MOCK=""; fi
 
 cd ../..
-corepack enable
-pnpm install --frozen-lockfile --filter @openblah/guest-web...
-VITE_MOCK_SERVER="$MOCK" pnpm --filter @openblah/guest-web build
+# Pin the pnpm that wrote the lockfile; the pnpm preinstalled on Vercel may be another major.
+PNPM="npx --yes pnpm@9.15.9"
+$PNPM install --frozen-lockfile --filter @openblah/guest-web...
+VITE_MOCK_SERVER="$MOCK" $PNPM --filter @openblah/guest-web build
 rm -rf apps/landing/dist/guest
 cp -r apps/guest-web/dist apps/landing/dist/guest
