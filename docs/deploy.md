@@ -123,3 +123,23 @@ It creates a fresh revision each run and times the first request (container star
 | Date | Image size | Median first-request time | Notes |
 | ---- | ---------- | ------------------------- | ----- |
 | TBD  | TBD        | TBD                       |       |
+
+## Call history cleanup (T19)
+
+Saved call history is deleted after each room's retention (30 days by default). A daily Cloud Scheduler job calls the protected cleanup endpoint with its own secret, `OPENBLAH_CLEANUP_SECRET` (not the agent secret):
+
+```sh
+gcloud secrets create OPENBLAH_CLEANUP_SECRET --replication-policy=automatic
+openssl rand -hex 32 | tr -d '\n' | gcloud secrets versions add OPENBLAH_CLEANUP_SECRET --data-file=-
+gcloud run services update openblah-server --region $REGION \
+  --update-secrets OPENBLAH_CLEANUP_SECRET=OPENBLAH_CLEANUP_SECRET:latest
+URL=$(gcloud run services describe openblah-server --region $REGION --format='value(status.url)')
+gcloud scheduler jobs create http openblah-history-cleanup --location=$REGION \
+  --schedule="17 3 * * *" --time-zone=UTC --http-method=POST \
+  --uri="$URL/internal/history/cleanup" \
+  --headers="Authorization=Bearer $(gcloud secrets versions access latest --secret=OPENBLAH_CLEANUP_SECRET)"
+```
+
+Verify: `gcloud scheduler jobs run openblah-history-cleanup --location=$REGION`, then the server log shows a 200 for `/internal/history/cleanup`. `scripts/check-history-cleanup.sh` checks that the job exists and prints a `::viber-manual::` marker with these commands if not.
+
+Endpoints (all but the guest one need the API key and `actorUserId`): `GET /v1/history`, `GET /v1/history/:roomId`, `DELETE /v1/history/:roomId` (host), `PUT /v1/rooms/:id/history-settings` (host; `saveNotes`, `retention` of `30d`, `1y` or `forever`), `GET /v1/invites/:token/history` (guest, read-only, 30 days, Q3), and for the agent worker `POST /internal/rooms/:id/history`.

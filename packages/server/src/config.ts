@@ -144,6 +144,7 @@ export function createAppFromEnv(env: Env = process.env) {
     trial,
     verifier,
     agentSecret: env.OPENBLAH_AGENT_SECRET || undefined,
+    cleanupSecret: env.OPENBLAH_CLEANUP_SECRET || undefined,
     worker: env.AGENT_WORKER_URL
       ? new HttpWorkerWaker(env.AGENT_WORKER_URL, env.AGENT_WORKER_AUTH === "iam")
       : undefined,

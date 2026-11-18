@@ -2,6 +2,7 @@ import type { UserRecord } from "./accounts.js";
 import type { KeyProvider, StoredKey } from "./keys.js";
 import type { SettingsLevel } from "./settings.js";
 import type { McpConnectionRecord } from "./mcp-oauth.js";
+import type { CallHistory } from "./history.js";
 import type { CallSummary, ConsentRecord, Invite, Participant, Room, Storage } from "./types.js";
 
 export class MemoryStorage implements Storage {
@@ -10,6 +11,7 @@ export class MemoryStorage implements Storage {
   private readonly participants = new Map<string, Participant>();
   private readonly consents = new Map<string, ConsentRecord>();
   private readonly summaries = new Map<string, CallSummary>();
+  private readonly histories = new Map<string, CallHistory>();
   private readonly keys = new Map<string, StoredKey>();
   private readonly mcp = new Map<string, McpConnectionRecord>();
   private readonly users = new Map<string, UserRecord>();
@@ -162,5 +164,42 @@ export class MemoryStorage implements Storage {
   async getSummary(roomId: string): Promise<CallSummary | null> {
     const s = this.summaries.get(roomId);
     return s ? structuredClone(s) : null;
+  }
+
+  async deleteSummary(roomId: string): Promise<void> {
+    this.summaries.delete(roomId);
+  }
+
+  async saveHistory(history: CallHistory): Promise<void> {
+    this.histories.set(history.roomId, structuredClone(history));
+  }
+
+  async getHistory(roomId: string): Promise<CallHistory | null> {
+    const h = this.histories.get(roomId);
+    return h ? structuredClone(h) : null;
+  }
+
+  async listHistories(roomIds: string[]): Promise<CallHistory[]> {
+    return roomIds.flatMap((id) => {
+      const h = this.histories.get(id);
+      return h ? [structuredClone(h)] : [];
+    });
+  }
+
+  async listAllHistories(): Promise<CallHistory[]> {
+    return [...this.histories.values()].map((h) => structuredClone(h));
+  }
+
+  async deleteHistory(roomId: string): Promise<void> {
+    this.histories.delete(roomId);
+  }
+
+  async listRoomIdsForUser(userId: string): Promise<string[]> {
+    const ids = new Set<string>();
+    for (const r of this.rooms.values()) if (r.hostUserId === userId) ids.add(r.id);
+    for (const p of this.participants.values()) {
+      if (p.userId === userId && p.role !== "guest") ids.add(p.roomId);
+    }
+    return [...ids];
   }
 }

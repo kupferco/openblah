@@ -18,6 +18,17 @@ import {
 } from "./keys.js";
 import { vendorKeyChecker, type KeyChecker } from "./keycheck.js";
 import { callbackPage, McpOAuthError, type McpOAuthService } from "./mcp-oauth.js";
+import {
+  canReadHistory,
+  cleanupExpiredHistory,
+  DEFAULT_RETENTION,
+  deleteCallHistory,
+  isRetention,
+  toListItem,
+  type ActionLogEntry,
+  type CallHistory,
+  type TranscriptLine,
+} from "./history.js";
 import { RateLimiter } from "./ratelimit.js";
 import {
   applyPatch,
@@ -66,6 +77,8 @@ export interface AppDeps {
   mcpOAuth?: McpOAuthService;
   /** Verifies Firebase ID tokens for the standalone app's own users (`/v1/me`). */
   verifier?: TokenVerifier;
+  /** Secret for the scheduled history cleanup (`POST /internal/history/cleanup`). Without it the endpoint is off. */
+  cleanupSecret?: string;
   /** Secret the agent worker uses on `/internal`. Without it `/internal` is off. */
   agentSecret?: string;
   /** Starts the agent worker on warm-up and before dispatch. Default: does nothing. */
@@ -530,6 +543,91 @@ export function createApp(deps: AppDeps): Hono {
     ...(canSeeContacts && p.contact ? { contact: p.contact } : {}),
   });
 
+  // ---- Call history, retention and delete (T19) ----
+
+  const retentionOf = (room: Room) => room.retention ?? DEFAULT_RETENTION;
+
+  /** The calls this person was in that have saved history. */
+  v1.get("/history", async (c) => {
+    const actor = str(c.req.query("actorUserId"), MAX_ID);
+    if (!actor) return c.json({ error: "actorUserId is required" }, 400);
+    const histories = await storage.listHistories(await storage.listRoomIdsForUser(actor));
+    const calls = [];
+    for (const h of histories) {
+      const room = await storage.getRoom(h.roomId);
+      if (!room) continue;
+      const participant = await storage.getParticipant(room.id, actor);
+      if (
+        !canReadHistory({
+          room,
+          history: h,
+          participant,
+          viewer: { kind: "user", userId: actor },
+          now: now(),
+        })
+      )
+        continue;
+      calls.push(toListItem(h, retentionOf(room)));
+    }
+    calls.sort((a, b) => b.savedAt.localeCompare(a.savedAt));
+    return c.json({ calls });
+  });
+
+  v1.get("/history/:id", async (c) => {
+    const room = await storage.getRoom(c.req.param("id"));
+    const actor = str(c.req.query("actorUserId"), MAX_ID);
+    if (!actor) return c.json({ error: "actorUserId is required" }, 400);
+    const history = room ? await storage.getHistory(room.id) : null;
+    if (
+      !room ||
+      !history ||
+      !canReadHistory({
+        room,
+        history,
+        participant: await storage.getParticipant(room.id, actor),
+        viewer: { kind: "user", userId: actor },
+        now: now(),
+      })
+    ) {
+      // Same answer whether the call exists or not, so ids cannot be probed.
+      return c.json({ error: "history not found" }, 404);
+    }
+    return c.json({
+      ...history,
+      retention: retentionOf(room),
+      expiresAt: toListItem(history, retentionOf(room)).expiresAt,
+    });
+  });
+
+  /** Host: delete everything stored for this call, any time (also after the room ended). */
+  v1.delete("/history/:id", async (c) => {
+    const room = await hostRoom(c, null, { allowEnded: true });
+    if (room instanceof Response) return room;
+    const existed = await deleteCallHistory(storage, room.id);
+    return c.json({ roomId: room.id, deleted: true, existed });
+  });
+
+  /** Host: save notes on or off, and how long history is kept. */
+  v1.put("/rooms/:id/history-settings", async (c) => {
+    const body = await readBody(c);
+    if (!body) return c.json({ error: "invalid JSON body" }, 400);
+    const room = await hostRoom(c, body, { allowEnded: true });
+    if (room instanceof Response) return room;
+    if (body.saveNotes !== undefined && typeof body.saveNotes !== "boolean") {
+      return c.json({ error: "saveNotes must be true or false" }, 400);
+    }
+    if (body.retention !== undefined && !isRetention(body.retention)) {
+      return c.json({ error: 'retention must be "30d", "1y" or "forever"' }, 400);
+    }
+    const next: Room = {
+      ...room,
+      ...(body.saveNotes !== undefined ? { saveNotes: body.saveNotes } : {}),
+      ...(body.retention !== undefined ? { retention: body.retention } : {}),
+    };
+    await storage.updateRoom(next);
+    return c.json({ saveNotes: next.saveNotes ?? false, retention: retentionOf(next) });
+  });
+
   // ---- Invites ----
 
   v1.post("/rooms/:id/invites", async (c) => {
@@ -964,6 +1062,34 @@ export function createApp(deps: AppDeps): Hono {
     });
   });
 
+  // Q3: a guest reads the history of the call through the invite link, read-only.
+  app.get("/v1/invites/:token/history", async (c) => {
+    const token = c.req.param("token");
+    const blocked = limited(c, token);
+    if (blocked) return blocked;
+    const invite = await storage.getInviteByTokenHash(sha256(token));
+    const room = invite ? await storage.getRoom(invite.roomId) : null;
+    const history = room ? await storage.getHistory(room.id) : null;
+    if (
+      !room ||
+      !history ||
+      !canReadHistory({
+        room,
+        history,
+        participant: null,
+        viewer: { kind: "guest", invite },
+        now: now(),
+      })
+    ) {
+      return invalidInvite(c);
+    }
+    return c.json({
+      ...history,
+      retention: retentionOf(room),
+      expiresAt: toListItem(history, retentionOf(room)).expiresAt,
+    });
+  });
+
   app.post("/v1/invites/:token/join", async (c) => {
     const token = c.req.param("token");
     const blocked = limited(c, token);
@@ -1322,6 +1448,68 @@ export function createApp(deps: AppDeps): Hono {
     if (!r.ok) return c.json({ error: r.message, code: r.code }, refusalStatus[r.code]);
     return c.json({ mode: r.mode, tier: r.tier, keys: r.keys });
   });
+  internal.post("/rooms/:id/history", async (c) => {
+    const room = await storage.getRoom(c.req.param("id"));
+    if (!room) return c.json({ error: "room not found" }, 404);
+    // Nothing is stored unless the host turned "save notes" on.
+    if (!room.saveNotes) return c.json({ saved: false });
+    const body = await readBody(c);
+    if (!body) return c.json({ error: "invalid JSON body" }, 400);
+    const strs = (v: unknown, n: number, len: number): string[] | null =>
+      Array.isArray(v) && v.length <= n && v.every((x) => typeof x === "string" && x.length <= len)
+        ? (v as string[])
+        : null;
+    const timed = <T extends { at: string }>(v: unknown, keys: string[]): T[] | null => {
+      if (!Array.isArray(v) || v.length > 20000) return null;
+      for (const x of v) {
+        if (!isRecord(x) || typeof x.at !== "string") return null;
+        if (!keys.every((k) => typeof x[k] === "string" && (x[k] as string).length <= 20000))
+          return null;
+      }
+      return v as T[];
+    };
+    const participants = strs(body.participants ?? [], 100, MAX_NAME);
+    const notes = strs(body.notes ?? [], 1000, 5000);
+    const transcript = timed<TranscriptLine>(body.transcript ?? [], ["speaker", "text"]);
+    const actionLog = timed<ActionLogEntry>(body.actionLog ?? [], ["text"]);
+    const actions = body.actions ?? [];
+    if (
+      !participants ||
+      !notes ||
+      !transcript ||
+      !actionLog ||
+      !Array.isArray(actions) ||
+      actions.length > 1000 ||
+      !actions.every(
+        (a) => isRecord(a) && typeof a.text === "string" && typeof a.done === "boolean",
+      )
+    ) {
+      return c.json({ error: "invalid history" }, 400);
+    }
+    if (typeof body.summary !== "string" || body.summary.length > 50000) {
+      return c.json({ error: "summary is required" }, 400);
+    }
+    const history: CallHistory = {
+      roomId: room.id,
+      hostUserId: room.hostUserId,
+      hostDisplayName: room.hostDisplayName,
+      participants,
+      transcript,
+      notes,
+      actions: actions.map((a) => ({
+        text: String(a.text).slice(0, 5000),
+        done: a.done as boolean,
+        ...(typeof a.owner === "string" ? { owner: a.owner.slice(0, MAX_NAME) } : {}),
+      })),
+      summary: body.summary,
+      language: body.language === "pt" ? "pt" : "en",
+      actionLog,
+      ...(typeof body.startedAt === "string" ? { startedAt: body.startedAt } : {}),
+      savedAt: now().toISOString(),
+    };
+    await storage.saveHistory(history);
+    return c.json({ saved: true, roomId: room.id }, 201);
+  });
   internal.post("/rooms/:id/usage", async (c) => {
     const room = await storage.getRoom(c.req.param("id"));
     if (!room) return c.json({ error: "room not found" }, 404);
@@ -1416,6 +1604,15 @@ export function createApp(deps: AppDeps): Hono {
       if (e instanceof McpOAuthError) return c.json({ error: e.message }, e.status);
       throw e;
     }
+  });
+  // Cloud Scheduler hits this daily with its own secret (not the agent's).
+  app.post("/internal/history/cleanup", async (c) => {
+    const m = /^Bearer (.+)$/i.exec(c.req.header("authorization") ?? "");
+    if (!deps.cleanupSecret || !m || !isValidApiKey(m[1] as string, [deps.cleanupSecret])) {
+      return c.json({ error: "unauthorized" }, 401);
+    }
+    const removed = await cleanupExpiredHistory(storage, now());
+    return c.json({ removed: removed.length });
   });
   app.route("/internal", internal);
 
