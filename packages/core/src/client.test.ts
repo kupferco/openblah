@@ -24,6 +24,7 @@ function fakeRoom(opts: { failConnect?: boolean } = {}) {
     state: ConnectionState.Disconnected,
     localParticipant: {
       ...local,
+      publishData: vi.fn(async () => {}),
       setMicrophoneEnabled: vi.fn(async (on: boolean) => {
         room.localParticipant.isMicrophoneEnabled = on;
       }),
@@ -45,7 +46,8 @@ function fakeRoom(opts: { failConnect?: boolean } = {}) {
       return room;
     }),
   };
-  const emit = (e: string) => handlers.get(e)?.forEach((h) => h());
+  const emit = (e: string, ...args: unknown[]) =>
+    handlers.get(e)?.forEach((h) => (h as (...a: unknown[]) => void)(...args));
   return { room, emit, remote, handlers };
 }
 
@@ -134,5 +136,63 @@ describe("OpenBlahClient", () => {
     changes.mockClear();
     f.emit(RoomEvent.ParticipantConnected);
     expect(changes).not.toHaveBeenCalled();
+  });
+});
+
+describe("tool approvals", () => {
+  const request = (ownerId: string) =>
+    new TextEncoder().encode(
+      JSON.stringify({
+        type: "request",
+        id: "ap1",
+        tool: "book table",
+        summary: "book table (party: 4)",
+        ownerId,
+        expiresAt: "2030-01-01T00:00:00Z",
+      }),
+    );
+
+  async function connected() {
+    const f = fakeRoom();
+    f.remote.set("agent-1", agent("listening"));
+    const client = new OpenBlahClient({ createRoom: () => f.room as unknown as RoomLike });
+    await client.connect("wss://x", "t");
+    return { f, client };
+  }
+
+  it("shows a request to the owner only, and only when the agent sent it", async () => {
+    const { f, client } = await connected();
+    f.emit(
+      RoomEvent.DataReceived,
+      request("someone-else"),
+      f.remote.get("agent-1"),
+      0,
+      "openblah.approval",
+    );
+    expect(client.getSnapshot().approvals).toEqual([]);
+    f.emit(RoomEvent.DataReceived, request("me"), { isAgent: false }, 0, "openblah.approval");
+    expect(client.getSnapshot().approvals).toEqual([]);
+    f.emit(RoomEvent.DataReceived, request("me"), f.remote.get("agent-1"), 0, "openblah.approval");
+    expect(client.getSnapshot().approvals).toMatchObject([
+      { id: "ap1", summary: "book table (party: 4)" },
+    ]);
+  });
+
+  it("answers to the agent and clears the card; resolved messages clear it too", async () => {
+    const { f, client } = await connected();
+    f.emit(RoomEvent.DataReceived, request("me"), f.remote.get("agent-1"), 0, "openblah.approval");
+    await client.respondToApproval("ap1", true);
+    expect(f.room.localParticipant.publishData).toHaveBeenCalledWith(expect.anything(), {
+      reliable: true,
+      topic: "openblah.approval.response",
+      destinationIdentities: ["agent-1"],
+    });
+    expect(client.getSnapshot().approvals).toEqual([]);
+    f.emit(RoomEvent.DataReceived, request("me"), f.remote.get("agent-1"), 0, "openblah.approval");
+    const done = new TextEncoder().encode(
+      JSON.stringify({ type: "resolved", id: "ap1", status: "executed" }),
+    );
+    f.emit(RoomEvent.DataReceived, done, f.remote.get("agent-1"), 0, "openblah.approval");
+    expect(client.getSnapshot().approvals).toEqual([]);
   });
 });

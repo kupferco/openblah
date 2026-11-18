@@ -19,6 +19,7 @@ function setup(opts: { max?: number } = {}) {
     updateRoomMetadata: vi.fn(async () => {}),
     deleteRoom: vi.fn(async () => {}),
     removeParticipant: vi.fn(async () => {}),
+    sendData: vi.fn(async () => {}),
     dispatchAgent: vi.fn(async () => ({ dispatchId: "AD_1", created: true })),
     createToken: vi.fn(async (r) => {
       tokens.push(r);
@@ -431,11 +432,21 @@ describe("guest rights and host controls", () => {
     expect(s.livekit.deleteRoom).toHaveBeenCalledOnce();
   });
 
-  it("approval endpoint is a host-only stub", async () => {
-    const { s, id } = await withGuest();
-    expect(
-      (await s.call("POST", `/v1/rooms/${id}/approvals/a1`, { actorUserId: "host", approve: true }))
-        .status,
-    ).toBe(501);
+  it("approval endpoint forwards only the tool owner's decision to the agent", async () => {
+    const { s, id, gid } = await withGuest();
+    const post = (actorUserId: string, extra: object = { approve: true }) =>
+      s.call("POST", `/v1/rooms/${id}/approvals/a1`, { actorUserId, ...extra });
+    expect((await post("host")).status).toBe(202);
+    expect(s.livekit.sendData).toHaveBeenCalledWith(
+      id,
+      "openblah.approval.decision",
+      JSON.stringify({ approvalId: "a1", approve: true, actorUserId: "host" }),
+    );
+    expect((await post("host", {})).status).toBe(400);
+    // A guest and an unrelated stranger are rejected and nothing is sent.
+    vi.mocked(s.livekit.sendData).mockClear();
+    expect((await post(gid)).status).toBe(403);
+    expect((await post("stranger")).status).toBe(403);
+    expect(s.livekit.sendData).not.toHaveBeenCalled();
   });
 });
