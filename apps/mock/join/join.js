@@ -172,7 +172,7 @@
         options: [
           ["name", "Name"],
           ["mic", "Mic check"],
-          ["joined", "Joined"],
+          ["joined", "In the call (straight to call screen)"],
           ["declined", "Not now"],
         ],
       },
