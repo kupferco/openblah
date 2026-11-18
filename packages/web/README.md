@@ -71,3 +71,7 @@ pnpm --filter @openblah/web dev
 Open http://localhost:5173. Open the "OpenBlah server" section and set the API URL (default `http://localhost:8080/v1`) and the API key (dev only). Host: join with a token, press "Invite (copy link)", open the link in a second browser, tick the consent box and join as a guest. "Pause AI" shows a banner in both. Or, with two plain tokens:
 
 Open http://localhost:5173 in two tabs. Get two tokens from the T2 server (`POST /v1/tokens` for the same room, different users), paste the LiveKit URL and one token per tab, and press Join. Each tab should hear the other.
+
+## Ready component
+
+`<OpenBlahRoom serverUrl token />` from `@openblah/web/react` is the whole call screen: join, mute, participants, agent state, consent, invite, agent control and tool approvals. Theme it with `theme`, reword it with `labels`, leave parts out with `hide` and build them yourself with the hooks. Same props in web and React Native. See [quickstart](../../docs/quickstart.md), [host integration](../../docs/host-integration.md), [API stability](../../docs/sdk-stability.md) and the [API reference](../../docs/api-reference/README.md).

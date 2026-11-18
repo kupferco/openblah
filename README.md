@@ -35,7 +35,7 @@ A pnpm workspaces monorepo (Node 20+, TypeScript strict).
 | `apps/app`              | `@openblah/app` (private)       | Standalone app                                        |
 | `apps/example`          | `@openblah/example` (private)   | Expo dev-build example for the React Native SDK       |
 | `apps/guest-web`        | `@openblah/guest-web` (private) | Browser guest page                                    |
-| `docs/`                 |                                 | `plan.md` and `tasks.md`                              |
+| `docs/`                 |                                 | Plan, tasks, quickstart, host guide, API reference    |
 
 Each package currently holds only a placeholder `src/index.ts` and a test.
 
