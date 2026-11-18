@@ -58,6 +58,35 @@ export async function fetchMcpToken(
 }
 
 /**
+ * Tell the server the agent was asked, out loud, to leave: the room goes to `off`, as if the
+ * host had pressed the button. Best effort; the agent leaves either way.
+ */
+export async function reportAgentOff(
+  roomId: string,
+  env: Env = process.env,
+  fetchFn: typeof fetch = fetch,
+): Promise<boolean> {
+  const base = env.OPENBLAH_SERVER_URL;
+  const secret = env.OPENBLAH_AGENT_SECRET;
+  if (!base || !secret) return false;
+  try {
+    const res = await fetchFn(
+      `${base.replace(/\/$/, "")}/internal/rooms/${encodeURIComponent(roomId)}/agent-off`,
+      { method: "POST", headers: { Authorization: `Bearer ${secret}` } },
+    );
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** True when no human is left in the room: the agent has nobody to serve and leaves. */
+export function lastHumanLeft(remote: Iterable<{ isAgent?: boolean }>): boolean {
+  for (const p of remote) if (!p.isAgent) return false;
+  return true;
+}
+
+/**
  * Counts the seconds the agent listens, thinks or speaks and reports them to
  * the server, which does the trial accounting. `onExhausted` fires when the
  * server says the trial is used up.

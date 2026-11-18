@@ -19,6 +19,7 @@ function setup(opts: { max?: number } = {}) {
     updateRoomMetadata: vi.fn(async () => {}),
     deleteRoom: vi.fn(async () => {}),
     removeParticipant: vi.fn(async () => {}),
+    stopAgent: vi.fn(async () => {}),
     sendData: vi.fn(async () => {}),
     dispatchAgent: vi.fn(async () => ({ dispatchId: "AD_1", created: true })),
     createToken: vi.fn(async (r) => {
@@ -232,9 +233,10 @@ describe("invites", () => {
 });
 
 describe("consent", () => {
-  it("text includes agent name and processors placeholder", () => {
+  it("text includes agent name and processors list", () => {
     expect(renderConsentText("Zed")).toContain("Zed");
-    expect(renderConsentText("Zed")).toContain("processors");
+    expect(renderConsentText("Zed")).toContain("LiveKit");
+    expect(renderConsentText("Zed")).not.toContain("filled in T19");
     expect(renderConsentText("Zed", "A, B")).toContain("A, B");
   });
 

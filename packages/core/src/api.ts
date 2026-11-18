@@ -54,6 +54,46 @@ export interface RoomParticipant {
   contact?: string;
 }
 
+/** A non-host asked for the agent; the host approves or declines it. */
+export interface AgentRequestInfo {
+  id: string;
+  userId: string;
+  displayName: string;
+  requestedAt: string;
+}
+
+/**
+ * The room's agent setting and what is pending. `agent` is `off` (a plain call), `on`, or `ask`
+ * (off until someone invites it).
+ */
+export interface AgentControlState {
+  agent: "on" | "off" | "ask";
+  agentName: string;
+  /** Any participant may bring the agent in or send it out, not only the host. */
+  anyoneCanAddAgent: boolean;
+  /** The agent leaves after this many seconds of silence. */
+  idleTimeoutSeconds: number;
+  /** The agent is on but waits for everyone to consent; it listens to nobody until then. */
+  awaitingConsent: boolean;
+  /** Who has not consented yet (only while awaiting consent). */
+  missing: { userId: string; displayName: string }[];
+  /** Pending requests; only the host sees them. */
+  requests: AgentRequestInfo[];
+  /** True when you may bring the agent in and send it out without asking. */
+  canControl: boolean;
+}
+
+/**
+ * What happened to a request to bring the agent in: it is `on`, `awaiting_consent` (asking
+ * everyone again), `requested` (the host was asked) or `refused` (a cap, key or trial limit).
+ */
+export interface AgentBringInResult {
+  status: "on" | "awaiting_consent" | "requested" | "refused";
+  agent: "on" | "off" | "ask";
+  missing?: { userId: string; displayName: string }[];
+  error?: string;
+}
+
 export interface ConsentStatus extends ConsentText {
   agentName: string;
   /** People in the room who have not consented to the current text. */
@@ -135,6 +175,32 @@ export interface StartMcpConnectionOptions {
   returnUrl?: string;
 }
 
+/** How long saved history is kept. */
+export type HistoryRetention = "30d" | "1y" | "forever";
+
+/** One past call in the list (no transcript). */
+export interface CallListItem {
+  roomId: string;
+  hostDisplayName: string;
+  participants: string[];
+  summary: string;
+  savedAt: string;
+  /** When it is deleted automatically, or null when kept until the host deletes it. */
+  expiresAt: string | null;
+}
+
+/** One past call, in full. Only saved when the host turned "save notes" on; never audio. */
+export interface CallRecord extends CallListItem {
+  hostUserId: string;
+  transcript: { speaker: string; text: string; at: string }[];
+  notes: string[];
+  actions: { text: string; owner?: string; done: boolean }[];
+  language: "en" | "pt";
+  actionLog: { text: string; at: string }[];
+  retention: HistoryRetention;
+  startedAt?: string;
+}
+
 export interface OpenBlahApiOptions {
   /** Server base URL including `/v1`, e.g. `https://api.example.com/v1`. */
   baseUrl: string;
@@ -211,6 +277,51 @@ export class OpenBlahApi {
       `/rooms/${enc(roomId)}/participants`,
       { query: { viewerUserId }, auth: true },
     ).then((r) => r.participants);
+  }
+
+  // ---- Optional agent (T18) ----
+
+  getAgentState(roomId: string, actorUserId: string) {
+    return this.call<AgentControlState>("GET", `/rooms/${enc(roomId)}/agent`, {
+      query: { actorUserId },
+      auth: true,
+    });
+  }
+
+  /** Host (or anyone, if the room allows it) brings the agent in; others leave a request. */
+  bringInAgent(roomId: string, actorUserId: string) {
+    return this.call<AgentBringInResult>("POST", `/rooms/${enc(roomId)}/agent/bring-in`, {
+      body: { actorUserId },
+      auth: true,
+    });
+  }
+
+  sendOutAgent(roomId: string, actorUserId: string) {
+    return this.call<{ status: "off"; agent: "on" | "off" | "ask" }>(
+      "POST",
+      `/rooms/${enc(roomId)}/agent/send-out`,
+      { body: { actorUserId }, auth: true },
+    );
+  }
+
+  answerAgentRequest(roomId: string, requestId: string, actorUserId: string, approve: boolean) {
+    return this.call<AgentBringInResult | { status: "declined"; agent: string }>(
+      "POST",
+      `/rooms/${enc(roomId)}/agent/requests/${enc(requestId)}/${approve ? "approve" : "decline"}`,
+      { body: { actorUserId }, auth: true },
+    );
+  }
+
+  /** Host: "anyone can add the agent" and the idle timeout (`null` goes back to the default). */
+  updateAgentSettings(
+    roomId: string,
+    actorUserId: string,
+    settings: { anyoneCanAddAgent?: boolean; idleTimeoutSeconds?: number | null },
+  ) {
+    return this.call<unknown>("PUT", `/rooms/${enc(roomId)}/agent`, {
+      body: { actorUserId, ...settings },
+      auth: true,
+    });
   }
 
   // ---- Consent ----
@@ -307,7 +418,50 @@ export class OpenBlahApi {
     });
   }
 
+  // ---- Call history (people who were in the call; the host can delete) ----
+
+  listCalls(actorUserId: string) {
+    return this.call<{ calls: CallListItem[] }>("GET", "/history", {
+      query: { actorUserId },
+      auth: true,
+    }).then((r) => r.calls);
+  }
+
+  getCall(roomId: string, actorUserId: string) {
+    return this.call<CallRecord>("GET", `/history/${enc(roomId)}`, {
+      query: { actorUserId },
+      auth: true,
+    });
+  }
+
+  /** Host only: remove everything stored for this call. */
+  deleteCall(roomId: string, actorUserId: string) {
+    return this.call<{ roomId: string; deleted: true; existed: boolean }>(
+      "DELETE",
+      `/history/${enc(roomId)}`,
+      { query: { actorUserId }, auth: true },
+    );
+  }
+
+  /** Host only: turn saving notes on or off, and choose how long history is kept. */
+  updateHistorySettings(
+    roomId: string,
+    actorUserId: string,
+    settings: { saveNotes?: boolean; retention?: HistoryRetention },
+  ) {
+    return this.call<{ saveNotes: boolean; retention: HistoryRetention }>(
+      "PUT",
+      `/rooms/${enc(roomId)}/history-settings`,
+      { body: { actorUserId, ...settings }, auth: true },
+    );
+  }
+
   // ---- Guests (public endpoints, no credentials) ----
+
+  /** A guest reads the call they joined, read-only, through their invite token (30 days). */
+  getCallWithInvite(token: string) {
+    return this.call<CallRecord>("GET", `/invites/${enc(token)}/history`);
+  }
 
   getInvite(token: string) {
     return this.call<InvitePreview>("GET", `/invites/${enc(token)}`);

@@ -1,6 +1,6 @@
 # Guest page (apps/guest-web)
 
-The page behind `https://openblah.vercel.app/j/<token>`. Built only on `@openblah/web`. Desktop Chrome, Safari and Firefox first; mobile is T30.
+The page behind `https://openblah.vercel.app/j/<token>`. Built only on `@openblah/web`. Desktop Chrome, Safari and Firefox first; phone browsers are covered in `mobile-browser.md`.
 
 Flow: open the link, enter a name, read and tick the consent line (hidden when the room's AI is off), check the microphone (permission and level meter), join. In the call: participants, agent state, mute, leave. Guests get no agent or host controls.
 
