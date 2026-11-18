@@ -5,6 +5,14 @@
 
 export type Decision = "speak" | "stay_quiet";
 
+/**
+ * How the agent behaves in a room. `listening` (default) never speaks unless
+ * addressed; `facilitating` may also speak briefly at natural pauses; `direct`
+ * is one to one with the host.
+ */
+export type RoomMode = "listening" | "facilitating" | "direct";
+export const ROOM_MODES: readonly RoomMode[] = ["listening", "facilitating", "direct"];
+
 /** One finished line of the merged transcript. */
 export interface TranscriptLine {
   /** Participant identity (stable id). */
@@ -40,6 +48,12 @@ export interface ClassifierInput {
   participantNames: string[];
   /** Recent lines, oldest first; the last one is the turn to judge. */
   transcript: TranscriptLine[];
+  /** Room mode; defaults to `listening`. */
+  mode?: RoomMode;
+  /** The agent is muted for everyone: it never speaks. */
+  muted?: boolean;
+  /** Display name of the host, used in `direct` mode. */
+  hostName?: string;
 }
 
 export interface ClassifierResult {
@@ -62,4 +76,11 @@ export interface TurnDecision extends ClassifierResult {
    */
   earliestSpeakMs?: number;
   latencyMs: number;
+  /** Mode and mute state when the decision was made. */
+  mode?: RoomMode;
+  muted?: boolean;
+  /** Set when a Facilitating rule fired: what to say, in one or two sentences. */
+  facilitation?: { kind: string; instruction: string };
+  /** Set when the turn was a voice command (mode change, mute, note, action). */
+  command?: string;
 }

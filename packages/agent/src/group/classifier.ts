@@ -86,6 +86,15 @@ export class SpeakClassifier {
     const turn = transcript[transcript.length - 1];
     if (!turn || turn.isAgent)
       return { decision: "stay_quiet", reason: "no human turn", source: "rule" };
+    if (input.muted) {
+      return { decision: "stay_quiet", reason: "agent is muted for everyone", source: "rule" };
+    }
+    if (input.mode === "direct") {
+      const host = input.hostName;
+      return !host || turn.speaker === host
+        ? { decision: "speak", reason: "direct mode: one to one with the host", source: "rule" }
+        : { decision: "stay_quiet", reason: "direct mode: not the host", source: "rule" };
+    }
 
     const to = detectAddressee(turn.text, agentName, participantNames);
     if (to.kind === "agent") {

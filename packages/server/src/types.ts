@@ -64,6 +64,18 @@ export interface ConsentRecord {
 }
 
 /** Storage for rooms, invites, participants and consent (later also history). */
+/** Post-call summary written by the agent when the call ends (T9). Full history screens come in T19. */
+export interface CallSummary {
+  roomId: string;
+  /** Language of `text`: the room's language. */
+  language: "en" | "pt";
+  text: string;
+  notes: string[];
+  actions: Array<{ text: string; owner?: string; done: boolean }>;
+  participants: string[];
+  createdAt: string;
+}
+
 export interface Storage {
   createRoom(room: Room): Promise<void>;
   getRoom(id: string): Promise<Room | null>;
@@ -107,6 +119,10 @@ export interface Storage {
 
   saveConsent(c: ConsentRecord): Promise<void>;
   listConsents(roomId: string): Promise<ConsentRecord[]>;
+
+  /** One summary per room; saving again replaces it. */
+  saveSummary(summary: CallSummary): Promise<void>;
+  getSummary(roomId: string): Promise<CallSummary | null>;
 }
 
 export interface TokenRequest {
