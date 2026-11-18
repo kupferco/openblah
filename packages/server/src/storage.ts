@@ -1,5 +1,6 @@
 import type { UserRecord } from "./accounts.js";
-import type { Provider, StoredKey } from "./keys.js";
+import type { KeyProvider, StoredKey } from "./keys.js";
+import type { SettingsLevel } from "./settings.js";
 import type { McpConnectionRecord } from "./mcp-oauth.js";
 import type { CallSummary, ConsentRecord, Invite, Participant, Room, Storage } from "./types.js";
 
@@ -13,6 +14,7 @@ export class MemoryStorage implements Storage {
   private readonly mcp = new Map<string, McpConnectionRecord>();
   private readonly users = new Map<string, UserRecord>();
   private readonly usage = new Map<string, number>();
+  private readonly settings = new Map<string, SettingsLevel>();
 
   async createRoom(room: Room): Promise<void> {
     if (this.rooms.has(room.id)) throw new Error("room already exists");
@@ -28,7 +30,7 @@ export class MemoryStorage implements Storage {
     this.keys.set(`${key.ownerId}|${key.provider}`, structuredClone(key));
   }
 
-  async deleteKey(ownerId: string, provider: Provider): Promise<boolean> {
+  async deleteKey(ownerId: string, provider: KeyProvider): Promise<boolean> {
     return this.keys.delete(`${ownerId}|${provider}`);
   }
 
@@ -69,6 +71,15 @@ export class MemoryStorage implements Storage {
   async getUser(id: string): Promise<UserRecord | null> {
     const u = this.users.get(id);
     return u ? structuredClone(u) : null;
+  }
+
+  async getSettings(scopeId: string): Promise<SettingsLevel | null> {
+    const s = this.settings.get(scopeId);
+    return s ? structuredClone(s) : null;
+  }
+
+  async putSettings(scopeId: string, settings: SettingsLevel): Promise<void> {
+    this.settings.set(scopeId, structuredClone(settings));
   }
 
   async getUsage(counterId: string): Promise<number> {

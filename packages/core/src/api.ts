@@ -60,6 +60,58 @@ export interface ConsentStatus extends ConsentText {
   missing: { userId: string; displayName: string }[];
 }
 
+/** A model provider in the onboarding list. Show `copy`; the Gemini entry is `recommended`. */
+export interface OnboardingProvider {
+  id: "gemini" | "openai" | "claude";
+  label: string;
+  recommended: boolean;
+  /** You saved a key for this provider. */
+  hasKey: boolean;
+  /** It can run now (own keys, the product's keys or the trial). */
+  usable: boolean;
+  keyMode?: "server" | "byok" | "product" | "trial";
+  /** Keys still missing to use this provider with your own keys (speech keys are needed too). */
+  missingKeys: KeyProviderName[];
+  copy: string;
+  /** Where to get a (free) key. */
+  keyUrl?: string;
+}
+
+export type KeyProviderName = "gemini" | "deepgram" | "cartesia" | "openai" | "claude";
+
+export interface TrialInfo {
+  limitSeconds: number;
+  usedSeconds: number;
+  remainingSeconds: number;
+  available: boolean;
+}
+
+export interface ModelSettings {
+  llm: { provider: "gemini" | "openai" | "claude"; model?: string };
+  /** Which level decided: room, user, product, server or default. */
+  source: string;
+  usable: boolean;
+  problem?: string;
+  language: "en" | "pt" | "auto";
+  agentName?: string;
+}
+
+export interface OnboardingInfo {
+  /** Intro text that suggests the free Gemini key first. */
+  intro: string;
+  providers: OnboardingProvider[];
+  trial: TrialInfo | null;
+  trialAvailable: boolean;
+  dataTerms: string;
+  current: ModelSettings;
+}
+
+export interface KeyCheckResult {
+  provider: KeyProviderName;
+  /** `unchecked`: no cheap check exists for this vendor. `unreachable`: try again. */
+  status: "valid" | "invalid" | "unchecked" | "unreachable";
+}
+
 /** A saved MCP server connection. Tokens are never returned. */
 export interface McpConnection {
   id: string;
@@ -178,6 +230,83 @@ export class OpenBlahApi {
     );
   }
 
+  // ---- Onboarding and settings. `userId` for a product's user; omit it for the standalone
+  // app's own signed-in user (the `/me` endpoints, with a Firebase ID token in `headers`). ----
+
+  getOnboarding(userId?: string) {
+    return this.call<OnboardingInfo>("GET", `${userPath(userId)}/onboarding`, { auth: true });
+  }
+
+  /** Ask the vendor whether a key works. The key is not stored. */
+  checkKey(provider: KeyProviderName, key: string, userId?: string) {
+    return this.call<KeyCheckResult>("POST", `${userPath(userId)}/keys/${enc(provider)}/check`, {
+      body: { key },
+      auth: true,
+    });
+  }
+
+  saveKey(
+    provider: KeyProviderName,
+    key: string,
+    opts: { tier: "free" | "paid"; noTrainingConfirmed?: boolean },
+    userId?: string,
+  ) {
+    return this.call<{ provider: string; tier: string }>(
+      "PUT",
+      `${userPath(userId)}/keys/${enc(provider)}`,
+      { body: { key, ...opts }, auth: true },
+    );
+  }
+
+  startTrial(userId?: string) {
+    return this.call<{ started: true; status: TrialInfo }>(
+      "POST",
+      `${userPath(userId)}/trial/start`,
+      { body: {}, auth: true },
+    );
+  }
+
+  getSettings(userId?: string) {
+    return this.call<ModelSettings>("GET", `${userPath(userId)}/settings`, { auth: true });
+  }
+
+  /** Change your model or language setting. `llm: null` goes back to the default. */
+  updateSettings(
+    settings: {
+      llm?: "gemini" | "openai" | "claude" | { provider: string; model?: string } | null;
+      language?: "en" | "pt" | "auto";
+    },
+    userId?: string,
+  ) {
+    return this.call<ModelSettings>("PUT", `${userPath(userId)}/settings`, {
+      body: { settings },
+      auth: true,
+    });
+  }
+
+  /** Room settings: the model, language and agent name for one room (host only to change). */
+  getRoomSettings(roomId: string, viewerUserId: string) {
+    return this.call<ModelSettings>("GET", `/rooms/${enc(roomId)}/settings`, {
+      query: { viewerUserId },
+      auth: true,
+    });
+  }
+
+  updateRoomSettings(
+    roomId: string,
+    actorUserId: string,
+    settings: {
+      llm?: "gemini" | "openai" | "claude" | { provider: string; model?: string } | null;
+      language?: "en" | "pt" | "auto";
+      agentName?: string;
+    },
+  ) {
+    return this.call<ModelSettings>("PUT", `/rooms/${enc(roomId)}/settings`, {
+      body: { actorUserId, settings },
+      auth: true,
+    });
+  }
+
   // ---- Guests (public endpoints, no credentials) ----
 
   getInvite(token: string) {
@@ -255,3 +384,4 @@ export class OpenBlahApi {
 }
 
 const enc = encodeURIComponent;
+const userPath = (userId?: string) => (userId ? `/users/${enc(userId)}` : "/me");

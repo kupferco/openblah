@@ -18,7 +18,14 @@ import {
   loadModels,
 } from "./pipeline.js";
 import { fetchMcpToken, fetchRoomKeys, reportUsageLog, UsageCollector } from "./keys.js";
-import { openMcpRoom, parseMcpConfig, type ActionLogEntry, type McpRoom } from "./mcp/index.js";
+import {
+  connectMcp,
+  openMcpRoom,
+  parseMcpConfig,
+  type ActionLogEntry,
+  type McpRoom,
+} from "./mcp/index.js";
+import { languageFromMetadata, SETTINGS_INSTRUCTIONS, settingsTools } from "./settings.js";
 import { parseRoomProviders, providersFromLevels, withRoomKeys } from "./providers/index.js";
 import {
   agentNameFromMetadata,
@@ -46,7 +53,8 @@ export default defineAgent({
     const models = ctx.proc.userData.models as Models;
     await ctx.connect();
     const roomKeys = await fetchRoomKeys(ctx.room.name ?? "");
-    // Room choice (job metadata) beats the user/product level (passed by the host later, T17) and the server default.
+    // The server resolves room > user/product > server default and puts the result in the job metadata,
+    // so `room` here is that result; the worker's own environment is only the last fallback.
     const providers = providersFromLevels(
       { room: parseRoomProviders(ctx.job.metadata) },
       withRoomKeys(process.env, roomKeys?.keys),
@@ -86,9 +94,40 @@ export default defineAgent({
       });
       ctx.addShutdownCallback(async () => mcp?.close());
     }
-    const directAgent = new DirectAgent(cfg, providers.tts, { ...control.tools(), ...mcp?.tools });
+    // The settings tool (model, language, name) lives on the OpenBlah server; reach it with the agent secret.
+    let settings: Awaited<ReturnType<typeof connectMcp>> | undefined;
+    const serverUrl = process.env.OPENBLAH_SERVER_URL;
+    if (serverUrl && process.env.OPENBLAH_AGENT_SECRET) {
+      try {
+        settings = await connectMcp(
+          `${serverUrl.replace(/\/$/, "")}/mcp/settings`,
+          process.env.OPENBLAH_AGENT_SECRET,
+        );
+        ctx.addShutdownCallback(async () => settings?.close());
+      } catch {
+        writeLog({ event: "settings_tool_unavailable", roomId: ctx.room.name });
+      }
+    }
+    const directAgent: DirectAgent = new DirectAgent(
+      cfg,
+      providers.tts,
+      {
+        ...control.tools(),
+        ...mcp?.tools,
+        ...(settings
+          ? settingsTools({
+              roomId: ctx.room.name ?? "",
+              connection: settings,
+              currentSpeaker: () => [...ctx.room.remoteParticipants.values()][0]?.identity,
+              turn: () => directAgent.turn,
+            })
+          : {}),
+      },
+      settings ? SETTINGS_INSTRUCTIONS : undefined,
+    );
     const options = buildSessionOptions(providers, models.vad, createTurnDetector());
     directAgent.bindTts(options.tts as tts.TTS);
+    directAgent.lockLanguage(languageFromMetadata(ctx.job.metadata));
     const session = new voice.AgentSession(options);
     live.session = session;
     attachLatencyLogging(session, directAgent, ctx.room.name);

@@ -45,6 +45,18 @@ export { OpenBlahServerClient } from "./client.js";
 export { HttpWorkerWaker, NoopWaker } from "./worker.js";
 export { RateLimiter } from "./ratelimit.js";
 export {
+  applyPatch,
+  parsePatch,
+  resolveLanguage,
+  resolveModel,
+  LLM_NAMES,
+  LANGUAGES,
+  llmUsable,
+} from "./settings.js";
+export type { Language, LlmName, ModelChoice, SettingsLevel, SettingsPatch } from "./settings.js";
+export { vendorKeyChecker } from "./keycheck.js";
+export type { KeyChecker, KeyCheck } from "./keycheck.js";
+export {
   DEFAULT_LIMITS,
   DEFAULT_PRICES,
   UsageService,
