@@ -36,3 +36,39 @@ describe("server calls", () => {
     expect(await reportUsage("r", 10, env, f as unknown as typeof fetch)).toBe(false);
   });
 });
+
+describe("UsageCollector", () => {
+  it("collects participant time, STT per track, TTS, tokens and idle", async () => {
+    const { UsageCollector, reportUsageLog } = await import("./keys.js");
+    let t = 0;
+    const c = new UsageCollector(() => t);
+    c.participantJoined("a");
+    t = 30_000;
+    c.participantJoined("b");
+    c.metrics({ type: "stt_metrics", audioDurationMs: 4000 } as never, "a");
+    c.metrics({ type: "tts_metrics", charactersCount: 120 } as never);
+    c.metrics({ type: "llm_metrics", promptTokens: 10, completionTokens: 5 } as never);
+    t = 60_000;
+    c.participantLeft("b");
+    const d = c.take();
+    expect(d.participantSeconds).toEqual({ a: 60, b: 30 });
+    expect(d.sttSeconds).toEqual({ a: 4 });
+    expect(d).toMatchObject({
+      ttsCharacters: 120,
+      llmInputTokens: 10,
+      llmOutputTokens: 5,
+      elapsedSeconds: 60,
+      idleSeconds: 60,
+    });
+    expect(c.take().ttsCharacters).toBe(0);
+
+    const env = { OPENBLAH_SERVER_URL: "http://s", OPENBLAH_AGENT_SECRET: "x" };
+    const f = vi.fn(
+      async () => new Response(JSON.stringify({ available: false, stop: "cost_cap" })),
+    );
+    expect(await reportUsageLog("r", d, env, f as unknown as typeof fetch)).toEqual({
+      available: false,
+      stop: "cost_cap",
+    });
+  });
+});

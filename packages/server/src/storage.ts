@@ -91,6 +91,10 @@ export class MemoryStorage implements Storage {
     return total;
   }
 
+  async listUsage(prefix: string): Promise<Record<string, number>> {
+    return Object.fromEntries([...this.usage].filter(([id]) => id.startsWith(prefix)));
+  }
+
   async updateRoom(room: Room): Promise<void> {
     if (!this.rooms.has(room.id)) throw new Error("room not found");
     this.rooms.set(room.id, structuredClone(room));

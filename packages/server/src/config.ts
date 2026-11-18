@@ -11,6 +11,7 @@ import { HttpWorkerWaker } from "./worker.js";
 import { MemoryStorage } from "./storage.js";
 import { DEFAULT_TRIAL_LIMITS, TrialService } from "./trial.js";
 import type { Storage } from "./types.js";
+import { DEFAULT_LIMITS, parsePrices, UsageService, webhookNotifier } from "./usage.js";
 
 type Env = Record<string, string | undefined>;
 
@@ -60,7 +61,7 @@ export function createAppFromEnv(env: Env = process.env) {
           preregistered: parsePreregistered(env.OPENBLAH_MCP_OAUTH_CLIENTS),
           allowLocal: env.OPENBLAH_MCP_ALLOW_LOCAL === "true",
         })
-    : undefined;
+      : undefined;
 
   // Product keys: per API key (JSON), plus the self-hosted default from the plain provider variables.
   const productKeys: Record<string, ReturnType<typeof parseProductKeys>[string]> = {};
@@ -115,9 +116,26 @@ export function createAppFromEnv(env: Env = process.env) {
       }
     : undefined;
 
+  const usage = new UsageService(storage, {
+    prices: parsePrices(env.OPENBLAH_PRICES),
+    monthlyCapGbp: num("OPENBLAH_MONTHLY_CAP_GBP", 50),
+    limits: {
+      maxRoomSeconds: num("OPENBLAH_MAX_ROOM_SECONDS", DEFAULT_LIMITS.maxRoomSeconds),
+      idleTimeoutSeconds: num("OPENBLAH_IDLE_TIMEOUT_SECONDS", DEFAULT_LIMITS.idleTimeoutSeconds),
+      userMonthlyMinutes: num("OPENBLAH_USER_MONTHLY_MINUTES", 0),
+      hostMonthlyMinutes: num("OPENBLAH_HOST_MONTHLY_MINUTES", 0),
+    },
+    notify: async (alert) => {
+      console.log(JSON.stringify(alert));
+      if (env.OPENBLAH_ALERT_WEBHOOK_URL)
+        await webhookNotifier(env.OPENBLAH_ALERT_WEBHOOK_URL)(alert);
+    },
+  });
+
   return createApp({
     storage,
     serverSettings,
+    usage,
     livekit,
     apiKeys,
     keyStore,

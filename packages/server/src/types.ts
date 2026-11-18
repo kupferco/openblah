@@ -24,6 +24,11 @@ export interface Room {
   /** Server-only: id of the API key that created the room (picks product keys). Never returned. */
   productKeyId?: string;
 
+  /** Lowers the server's max agent session length for this room, in seconds. */
+  maxDurationSeconds?: number;
+  /** Lowers the server's idle timeout for this room, in seconds. */
+  idleTimeoutSeconds?: number;
+
   /** Set when the host ends the room; no more tokens or invites. */
   endedAt?: string;
 }
@@ -81,6 +86,8 @@ export interface Storage {
   getUsage(counterId: string): Promise<number>;
   /** Atomically add seconds; returns the new total. */
   addUsage(counterId: string, seconds: number): Promise<number>;
+  /** All counters whose id starts with `prefix`, by id (the usage log). */
+  listUsage(prefix: string): Promise<Record<string, number>>;
 
   updateRoom(room: Room): Promise<void>;
 
