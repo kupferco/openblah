@@ -32,8 +32,38 @@ export interface McpConnection {
  * does not speak it, fall back to the older HTTP+SSE transport. The token is
  * sent as a bearer token. stdio is deliberately not supported.
  */
-export async function connectMcp(url: string, token?: string): Promise<McpConnection> {
-  const requestInit = token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
+/** `refresh: true` asks for a new token because the server rejected the last one. */
+export type McpTokenProvider = (opts?: { refresh?: boolean }) => Promise<string>;
+
+/**
+ * `token` is a fixed bearer token, or a function called for every request so a
+ * refreshed OAuth token is picked up without reconnecting.
+ */
+export async function connectMcp(
+  url: string,
+  token?: string | McpTokenProvider,
+): Promise<McpConnection> {
+  const requestInit =
+    typeof token === "string" ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
+  const dynamicFetch =
+    typeof token === "function"
+      ? async (input: string | URL, init?: RequestInit) => {
+          const send = async (refresh: boolean) => {
+            const headers = new Headers(init?.headers);
+            headers.set(
+              "Authorization",
+              `Bearer ${await token(refresh ? { refresh } : undefined)}`,
+            );
+            return fetch(input, { ...init, headers });
+          };
+          const res = await send(false);
+          if (res.status !== 401) return res;
+          // The server may have expired or revoked the token early: refresh once and retry.
+          await res.body?.cancel().catch(() => undefined);
+          return send(true);
+        }
+      : undefined;
+  const options = { requestInit, ...(dynamicFetch ? { fetch: dynamicFetch } : {}) };
   const target = new URL(url);
   const make = async (transport: Transport): Promise<Client> => {
     const client = new Client({ name: "openblah-agent", version: "0.0.0" });
@@ -42,9 +72,9 @@ export async function connectMcp(url: string, token?: string): Promise<McpConnec
   };
   let client: Client;
   try {
-    client = await make(new StreamableHTTPClientTransport(target, { requestInit }));
+    client = await make(new StreamableHTTPClientTransport(target, options));
   } catch {
-    client = await make(new SSEClientTransport(target, { requestInit }));
+    client = await make(new SSEClientTransport(target, options));
   }
   return {
     async listTools() {

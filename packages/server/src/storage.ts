@@ -1,3 +1,6 @@
+import type { UserRecord } from "./accounts.js";
+import type { Provider, StoredKey } from "./keys.js";
+import type { McpConnectionRecord } from "./mcp-oauth.js";
 import type { ConsentRecord, Invite, Participant, Room, Storage } from "./types.js";
 
 export class MemoryStorage implements Storage {
@@ -5,6 +8,10 @@ export class MemoryStorage implements Storage {
   private readonly invites = new Map<string, Invite>();
   private readonly participants = new Map<string, Participant>();
   private readonly consents = new Map<string, ConsentRecord>();
+  private readonly keys = new Map<string, StoredKey>();
+  private readonly mcp = new Map<string, McpConnectionRecord>();
+  private readonly users = new Map<string, UserRecord>();
+  private readonly usage = new Map<string, number>();
 
   async createRoom(room: Room): Promise<void> {
     if (this.rooms.has(room.id)) throw new Error("room already exists");
@@ -14,6 +21,67 @@ export class MemoryStorage implements Storage {
   async getRoom(id: string): Promise<Room | null> {
     const room = this.rooms.get(id);
     return room ? structuredClone(room) : null;
+  }
+
+  async putKey(key: StoredKey): Promise<void> {
+    this.keys.set(`${key.ownerId}|${key.provider}`, structuredClone(key));
+  }
+
+  async deleteKey(ownerId: string, provider: Provider): Promise<boolean> {
+    return this.keys.delete(`${ownerId}|${provider}`);
+  }
+
+  async listKeys(ownerId: string): Promise<StoredKey[]> {
+    return [...this.keys.values()]
+      .filter((k) => k.ownerId === ownerId)
+      .map((k) => structuredClone(k));
+  }
+
+  async putMcpConnection(rec: McpConnectionRecord): Promise<void> {
+    this.mcp.set(rec.id, structuredClone(rec));
+  }
+
+  async getMcpConnection(id: string): Promise<McpConnectionRecord | null> {
+    const r = this.mcp.get(id);
+    return r ? structuredClone(r) : null;
+  }
+
+  async listMcpConnections(ownerId: string): Promise<McpConnectionRecord[]> {
+    return [...this.mcp.values()]
+      .filter((r) => r.ownerId === ownerId)
+      .map((r) => structuredClone(r));
+  }
+
+  async deleteMcpConnection(id: string): Promise<void> {
+    this.mcp.delete(id);
+  }
+
+  async upsertUser(user: UserRecord): Promise<UserRecord> {
+    const existing = this.users.get(user.id);
+    const merged = existing
+      ? { ...existing, email: user.email ?? existing.email, isTest: user.isTest }
+      : user;
+    this.users.set(user.id, structuredClone(merged));
+    return structuredClone(merged);
+  }
+
+  async getUser(id: string): Promise<UserRecord | null> {
+    const u = this.users.get(id);
+    return u ? structuredClone(u) : null;
+  }
+
+  async getUsage(counterId: string): Promise<number> {
+    return this.usage.get(counterId) ?? 0;
+  }
+
+  async addUsage(counterId: string, seconds: number): Promise<number> {
+    const total = (this.usage.get(counterId) ?? 0) + seconds;
+    this.usage.set(counterId, total);
+    return total;
+  }
+
+  async listUsage(prefix: string): Promise<Record<string, number>> {
+    return Object.fromEntries([...this.usage].filter(([id]) => id.startsWith(prefix)));
   }
 
   async updateRoom(room: Room): Promise<void> {

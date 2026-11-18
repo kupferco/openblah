@@ -18,5 +18,52 @@ export type {
   TokenRequest,
   WorkerWaker,
 } from "./types.js";
+export { KeyCipher } from "./crypto.js";
+export type { Sealed } from "./crypto.js";
+export {
+  apiKeyId,
+  KeyStore,
+  parseProductKeys,
+  resolveRoomKeys,
+  DATA_TERMS,
+  PROVIDERS,
+} from "./keys.js";
+export type {
+  KeyInfo,
+  KeyMode,
+  KeyTier,
+  Provider,
+  ProviderKeys,
+  Resolution,
+  StoredKey,
+} from "./keys.js";
+export { TrialService, DEFAULT_TRIAL_LIMITS } from "./trial.js";
+export type { TrialLimits, TrialStatus } from "./trial.js";
+export { FirebaseTokenVerifier, PREVIEW_TEST_EMAIL } from "./accounts.js";
+export type { TokenVerifier, UserRecord, VerifiedUser } from "./accounts.js";
+export { OpenBlahServerClient } from "./client.js";
 export { HttpWorkerWaker, NoopWaker } from "./worker.js";
 export { RateLimiter } from "./ratelimit.js";
+export {
+  DEFAULT_LIMITS,
+  DEFAULT_PRICES,
+  UsageService,
+  parsePrices,
+  webhookNotifier,
+} from "./usage.js";
+export type {
+  CostAlert,
+  CostBreakdown,
+  PriceTable,
+  RoomUsage,
+  StopReason,
+  UsageLimits,
+  UsageReport,
+} from "./usage.js";
+export { McpOAuthService, McpOAuthError, parsePreregistered } from "./mcp-oauth.js";
+export type {
+  McpConnectionInfo,
+  McpConnectionRecord,
+  McpConnectionStatus,
+  McpOAuthOptions,
+} from "./mcp-oauth.js";

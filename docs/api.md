@@ -16,6 +16,10 @@ Errors are `{ "error": "..." }` with 400 (bad input), 401 (no/wrong key), 403 (r
 
 The LiveKit token carries `{"role": ...}` as participant metadata. No role may change its own metadata; only the host gets `roomAdmin`; nobody gets recording rights.
 
+## MCP connections (T15)
+
+Per-user OAuth sign-in to MCP servers: `POST /users/:userId/mcp/connections`, `GET` (list and one), `POST …/:id/test`, `DELETE …/:id`, and the public `GET /mcp/callback`. See [mcp-oauth.md](mcp-oauth.md).
+
 ## Invites
 
 ### `POST /rooms/:id/invites` (host)
@@ -63,6 +67,14 @@ Sends the agent into the room. 409 if the room's agent is `off`, or if any curre
 | `POST /rooms/:id/approvals/:approvalId`     | tool owner | Body `actorUserId`, `approve` (boolean). Only the host or an `ownerId` named in the room's `mcp` config; guests and others get 403. Forwards the decision to the agent (202). See `docs/tools.md`. |
 | `GET /rooms/:id/participants?viewerUserId=` | any        | Guests do not see `contact`; hosts and members do. Removed users are not listed.                                                                                                                   |
 | `GET /rooms/:id/permissions?userId=`        | any        | `{ role, canInvokeTools, canChangeAgentMode, canSeeContacts, isHost }`. The agent uses it to refuse tool calls from guests.                                                                        |
+
+## Usage and limits (T20)
+
+| Method and path                         | Who  | Notes                                                                                                                                                                                 |
+| --------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /rooms/:id/usage?actorUserId=`     | host | Read-only usage log: participant minutes, STT seconds per track, TTS characters, LLM tokens, estimated GBP cost per provider, effective limits, monthly minutes. See `docs/costs.md`. |
+| `POST /rooms` with `maxDurationSeconds` | any  | Optional, and `idleTimeoutSeconds`: integers 1 to 86400 that lower the server defaults for this room.                                                                                 |
+| `POST /rooms/:id/agent`                 | any  | 429 with `code` `host_cap` or `user_cap` when a monthly minute cap is reached.                                                                                                        |
 
 ## Guest rights
 

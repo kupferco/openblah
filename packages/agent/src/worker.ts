@@ -17,8 +17,9 @@ import {
   DirectAgent,
   loadModels,
 } from "./pipeline.js";
+import { fetchMcpToken, fetchRoomKeys, reportUsageLog, UsageCollector } from "./keys.js";
 import { openMcpRoom, parseMcpConfig, type ActionLogEntry, type McpRoom } from "./mcp/index.js";
-import { defaultProviders } from "./providers/index.js";
+import { parseRoomProviders, providersFromLevels, withRoomKeys } from "./providers/index.js";
 import {
   agentNameFromMetadata,
   AI_PAUSED_ATTRIBUTE,
@@ -44,15 +45,20 @@ export default defineAgent({
     const env = configFromEnv();
     const models = ctx.proc.userData.models as Models;
     await ctx.connect();
-    // The room's own agent name wins over the environment default (Q1).
-    const cfg = { ...env, agentName: agentNameFromMetadata(ctx.room.metadata, env.agentName) };
-    const providers = defaultProviders();
+    const roomKeys = await fetchRoomKeys(ctx.room.name ?? "");
+    // Room choice (job metadata) beats the user/product level (passed by the host later, T17) and the server default.
+    const providers = providersFromLevels(
+      { room: parseRoomProviders(ctx.job.metadata) },
+      withRoomKeys(process.env, roomKeys?.keys),
+    );
     const encoder = new TextEncoder();
     const publish = (topic: string, payload: object) =>
       ctx.room.localParticipant?.publishData(encoder.encode(JSON.stringify(payload)), {
         reliable: true,
         topic,
       });
+    // The room's own agent name wins over the environment default (Q1).
+    const cfg = { ...env, agentName: agentNameFromMetadata(ctx.room.metadata, env.agentName) };
     const control: RoomControl = new RoomControl({
       agentName: cfg.agentName,
       hostIdentity: hostIdentityFromMetadata(ctx.room.metadata),
@@ -66,6 +72,8 @@ export default defineAgent({
         roomId: ctx.room.name ?? "",
         config: mcpConfig,
         provider: providers.llm,
+        fetchToken: (ownerId, connectionId, refresh) =>
+          fetchMcpToken(ctx.room.name ?? "", ownerId, connectionId, refresh),
         // The action log goes to the structured log (with confirmation evidence).
         log: { record: (e: ActionLogEntry) => writeLog({ event: "mcp_action", ...e }) },
         hooks: {
@@ -101,6 +109,36 @@ export default defineAgent({
     });
     attachLatencyLogging(session, directAgent, ctx.room.name);
     await session.start({ agent: directAgent, room: ctx.room });
+    if (roomKeys) {
+      // The server keeps the usage log and enforces the caps (room length, idle, monthly
+      // minutes, the £50 hosted-key cap and the trial); the worker only reports and stops.
+      const collector = new UsageCollector();
+      for (const p of ctx.room.remoteParticipants.values()) collector.participantJoined(p.identity);
+      ctx.room.on(RoomEvent.ParticipantConnected, (p) => collector.participantJoined(p.identity));
+      ctx.room.on(RoomEvent.ParticipantDisconnected, (p) => collector.participantLeft(p.identity));
+      ctx.room.on(RoomEvent.ActiveSpeakersChanged, (s) => s.length > 0 && collector.activity());
+      session.on(voice.AgentSessionEventTypes.AgentStateChanged, (ev) =>
+        collector.agentState(ev.newState),
+      );
+      session.on(voice.AgentSessionEventTypes.MetricsCollected, (ev) =>
+        collector.metrics(
+          ev.metrics,
+          [...ctx.room.remoteParticipants.values()][0]?.identity ?? "session",
+        ),
+      );
+      const send = async () => {
+        const verdict = await reportUsageLog(ctx.room.name ?? "", collector.take());
+        if (!verdict.available) {
+          writeLog({ event: "agent_stopped", roomId: ctx.room.name, reason: verdict.stop });
+          void session.close();
+        }
+      };
+      const timer = setInterval(() => void send().catch(() => {}), 10_000);
+      ctx.addShutdownCallback(async () => {
+        clearInterval(timer);
+        await reportUsageLog(ctx.room.name ?? "", collector.take()).catch(() => {});
+      });
+    }
     writeLog({ event: "agent_joined", roomId: ctx.room.name });
 
     const local = ctx.room.localParticipant;

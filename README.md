@@ -56,6 +56,23 @@ Copy `.env.example` to `.env` for the variables later tasks will use. CI runs th
 
 `packages/server` runs with `pnpm --filter @openblah/server dev` (needs a `.env`, see `.env.example`). Endpoints and Cloud Run deploy steps are in [docs/deploy.md](docs/deploy.md).
 
+## Costs
+
+Per-minute provider cost model:
+
+```
+cost/min ≈ LiveKit participant-minutes (humans + agent)
+         + STT (per audio minute, per human track)
+         + TTS (per character spoken)
+         + LLM (tokens in/out)
+```
+
+STT is billed per human track, so a 4-person call costs about 4x the STT of a 1:1 call. Audio is
+**VAD-gated**: it only goes to STT when speech is detected, so silent tracks cost nothing, and with
+the agent off nothing goes to STT, LLM or TTS. The server keeps a usage log per room, per-room
+duration and idle limits, per-user and per-host monthly minute caps, and a £50/month cap on the
+hosted trial key. Prices, settings and the owner steps are in [docs/costs.md](docs/costs.md).
+
 ## Licence
 
 Open source under the [MIT licence](LICENSE).
