@@ -8,11 +8,16 @@ import type { SpokenLanguage } from "./providers/types.js";
  */
 export const CONTROL_TOPIC = "openblah.control";
 export const AI_PAUSED_ATTRIBUTE = "openblah.ai_paused";
+/** Agent participant attributes for the room mode and the "mute the agent" state (see group/modes.ts). */
+export const MODE_ATTRIBUTE = "openblah.mode";
+export const AGENT_MUTED_ATTRIBUTE = "openblah.agent_muted";
 
 export type ControlMessage =
   | { type: "pause_ai"; paused: boolean }
   | { type: "invite_request"; requestId: string; who: string }
-  | { type: "invite_response"; requestId: string; status: "sent" | "declined" };
+  | { type: "invite_response"; requestId: string; status: "sent" | "declined" }
+  | { type: "set_mode"; mode: "listening" | "facilitating" | "direct" }
+  | { type: "mute_agent"; muted: boolean };
 
 export function parseControlMessage(payload: Uint8Array | string): ControlMessage | null {
   let raw: unknown;
@@ -25,6 +30,15 @@ export function parseControlMessage(payload: Uint8Array | string): ControlMessag
   const m = raw as Record<string, unknown>;
   if (m.type === "pause_ai" && typeof m.paused === "boolean") {
     return { type: "pause_ai", paused: m.paused };
+  }
+  if (
+    m.type === "set_mode" &&
+    (m.mode === "listening" || m.mode === "facilitating" || m.mode === "direct")
+  ) {
+    return { type: "set_mode", mode: m.mode };
+  }
+  if (m.type === "mute_agent" && typeof m.muted === "boolean") {
+    return { type: "mute_agent", muted: m.muted };
   }
   if (m.type === "invite_request" && typeof m.requestId === "string" && typeof m.who === "string") {
     return { type: "invite_request", requestId: m.requestId, who: m.who };
