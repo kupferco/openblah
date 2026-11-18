@@ -18,6 +18,7 @@ import {
 import { callbackPage, McpOAuthError, type McpOAuthService } from "./mcp-oauth.js";
 import { RateLimiter } from "./ratelimit.js";
 import type { TrialService } from "./trial.js";
+import { UsageService, type UsageReport } from "./usage.js";
 import type {
   AgentMode,
   Invite,
@@ -41,6 +42,8 @@ export interface AppDeps {
   productKeys?: Record<string, ProductKeyConfig>;
   /** OpenBlah's hosted keys for the trial, and the trial accounting. */
   trial?: { keys: ProviderKeys; service: TrialService };
+  /** Usage log, caps and the monthly cost counter. Default: built-in limits and prices. */
+  usage?: UsageService;
   /** Per-user OAuth connections to MCP servers. Without it the connection endpoints answer 501. */
   mcpOAuth?: McpOAuthService;
   /** Verifies Firebase ID tokens for the standalone app's own users (`/v1/me`). */
@@ -124,6 +127,7 @@ export function createApp(deps: AppDeps): Hono {
   const { storage, livekit } = deps;
   const ttl = deps.tokenTtlSeconds ?? 600;
   const now = deps.now ?? (() => new Date());
+  const usage = deps.usage ?? new UsageService(storage, { now });
   const worker: WorkerWaker = deps.worker ?? { wake: async () => false };
   const warmupLimit = new RateLimiter(deps.warmupPerMinute ?? 6, 60_000, deps.nowMs);
   // Waking is idempotent; coalesce so a burst of users causes one request to the worker.
@@ -144,6 +148,8 @@ export function createApp(deps: AppDeps): Hono {
           keys: deps.trial?.keys ?? null,
           canStart: async (r) => {
             if (!(await storage.getUser(r.hostUserId))) return "sign_in_required";
+            // The hosted keys stop for everyone at the monthly cost cap.
+            if (await usage.hostedCapReached()) return "exhausted";
             const dev = typeof r.metadata.deviceId === "string" ? r.metadata.deviceId : undefined;
             return (await deps.trial?.service.canStart(r.hostUserId, dev)) ? "ok" : "exhausted";
           },
@@ -231,6 +237,18 @@ export function createApp(deps: AppDeps): Hono {
     const agentName =
       body.agentName === undefined ? defaultAgentName : str(body.agentName, MAX_NAME);
     if (!agentName) return c.json({ error: "agentName must be a non-empty string" }, 400);
+    const limitOf = (v: unknown): number | undefined | null => {
+      if (v === undefined) return undefined;
+      return typeof v === "number" && Number.isInteger(v) && v > 0 && v <= 86_400 ? v : null;
+    };
+    const maxDurationSeconds = limitOf(body.maxDurationSeconds);
+    const idleTimeoutSeconds = limitOf(body.idleTimeoutSeconds);
+    if (maxDurationSeconds === null || idleTimeoutSeconds === null) {
+      return c.json(
+        { error: "maxDurationSeconds and idleTimeoutSeconds must be integers from 1 to 86400" },
+        400,
+      );
+    }
     const room: Room = {
       id: `rm_${randomBytes(12).toString("base64url")}`,
       hostUserId,
@@ -238,6 +256,8 @@ export function createApp(deps: AppDeps): Hono {
       agent: agent as AgentMode,
       agentName,
       sensitive: body.sensitive === true,
+      ...(maxDurationSeconds ? { maxDurationSeconds } : {}),
+      ...(idleTimeoutSeconds ? { idleTimeoutSeconds } : {}),
       metadata: (body.metadata as Record<string, unknown> | undefined) ?? {},
       ...(body.mcp ? { mcp: { ownerId: hostUserId, ...(body.mcp as object) } } : {}),
       createdAt: now().toISOString(),
@@ -684,6 +704,17 @@ export function createApp(deps: AppDeps): Hono {
     const room = await storage.getRoom(c.req.param("id"));
     if (!room) return c.json({ error: "room not found" }, 404);
     if (room.agent === "off") return c.json({ error: "agent is off for this room" }, 409);
+    if (room.endedAt) return c.json({ error: "room has ended" }, 409);
+    const members = (await storage.listParticipants(room.id))
+      .filter((p) => !p.removedAt)
+      .map((p) => p.userId);
+    const capped = await usage.checkStart(room, members);
+    if (capped) {
+      return c.json(
+        { error: "A monthly minute cap is reached. Try again next month.", code: capped },
+        429,
+      );
+    }
     // With no key modes configured the worker uses its own environment keys.
     const keys = keyModesConfigured ? await resolve(room) : { ok: true as const };
     if (!keys.ok) return c.json({ error: keys.message, code: keys.code }, refusalStatus[keys.code]);
@@ -694,6 +725,19 @@ export function createApp(deps: AppDeps): Hono {
       await dispatchMetadata(room),
     );
     return c.json({ roomId: room.id, dispatchId, created }, created ? 201 : 200);
+  });
+
+  // Read-only usage log for the host: minutes, STT seconds, TTS characters, tokens and estimated cost.
+  v1.get("/rooms/:id/usage", async (c) => {
+    const room = await hostRoom(c, null, { allowEnded: true });
+    if (room instanceof Response) return room;
+    return c.json({
+      ...(await usage.roomUsage(room.id)),
+      limits: usage.roomLimits(room),
+      hostMinutesThisMonth: await usage.hostMinutesThisMonth(room.hostUserId),
+      hostMonthlyMinutesCap: usage.limits.hostMonthlyMinutes || null,
+      userMonthlyMinutesCap: usage.limits.userMonthlyMinutes || null,
+    });
   });
 
   // Which mode pays for a room, without any key material.
@@ -873,17 +917,68 @@ export function createApp(deps: AppDeps): Hono {
     const room = await storage.getRoom(c.req.param("id"));
     if (!room) return c.json({ error: "room not found" }, 404);
     const body = await readBody(c);
-    const seconds = body?.seconds;
+    if (!body) return c.json({ error: "invalid JSON body" }, 400);
+    const seconds = body.seconds ?? 0;
     if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0 || seconds > 3600) {
       return c.json({ error: "seconds must be a number from 0 to 3600" }, 400);
     }
+    const nums = (v: unknown, max: number): Record<string, number> | null => {
+      if (v === undefined) return {};
+      if (!isRecord(v) || Object.keys(v).length > 100) return null;
+      const out: Record<string, number> = {};
+      for (const [k, n] of Object.entries(v)) {
+        if (typeof n !== "number" || !Number.isFinite(n) || n < 0 || n > max) return null;
+        out[k.slice(0, MAX_ID)] = n;
+      }
+      return out;
+    };
+    const scalar = (v: unknown, max: number) =>
+      v === undefined
+        ? 0
+        : typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= max
+          ? v
+          : null;
+    const participantSeconds = nums(body.participantSeconds, 3600 * 100);
+    const sttSeconds = nums(body.sttSeconds, 3600 * 100);
+    const elapsed = scalar(body.elapsedSeconds, 3600 * 100);
+    const idle = scalar(body.idleSeconds, 86_400 * 7);
+    const tts = scalar(body.ttsCharacters, 1e7);
+    const llmIn = scalar(body.llmInputTokens, 1e9);
+    const llmOut = scalar(body.llmOutputTokens, 1e9);
+    if (
+      !participantSeconds ||
+      !sttSeconds ||
+      elapsed === null ||
+      idle === null ||
+      tts === null ||
+      llmIn === null ||
+      llmOut === null
+    ) {
+      return c.json({ error: "invalid usage report" }, 400);
+    }
     const r = await resolve(room);
-    const trialRoom = r.ok ? r.mode === "trial" : r.code === "trial_exhausted";
-    if (!trialRoom || !deps.trial) return c.json({ counted: false });
+    const hosted = r.ok ? r.mode === "trial" : r.code === "trial_exhausted";
+    const report: UsageReport = {
+      agentSeconds: seconds,
+      elapsedSeconds: elapsed,
+      idleSeconds: idle,
+      participantSeconds,
+      sttSeconds,
+      ttsCharacters: tts,
+      llmInputTokens: llmIn,
+      llmOutputTokens: llmOut,
+    };
+    const verdict = await usage.record(room, report, hosted);
+    if (!hosted || !deps.trial) {
+      return c.json({ counted: false, available: verdict.available, stop: verdict.stop });
+    }
     const dev = typeof room.metadata.deviceId === "string" ? room.metadata.deviceId : undefined;
+    const trial = await deps.trial.service.record(room.hostUserId, seconds, dev);
     return c.json({
       counted: true,
-      ...(await deps.trial.service.record(room.hostUserId, seconds, dev)),
+      ...trial,
+      available: trial.available && verdict.available,
+      stop: verdict.stop ?? (trial.available ? undefined : "trial_used"),
     });
   });
   // The agent asks for a connection's current token when it connects and on each

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { FieldValue, Firestore } from "@google-cloud/firestore";
+import { FieldPath, FieldValue, Firestore } from "@google-cloud/firestore";
 import type { UserRecord } from "./accounts.js";
 import type { Provider, StoredKey } from "./keys.js";
 import type { McpConnectionRecord } from "./mcp-oauth.js";
@@ -93,6 +93,17 @@ export class FirestoreStorage implements Storage {
     const ref = this.db.collection("usage").doc(counterId);
     await ref.set({ seconds: FieldValue.increment(seconds) }, { merge: true });
     return this.getUsage(counterId);
+  }
+
+  async listUsage(prefix: string): Promise<Record<string, number>> {
+    const snap = await this.db
+      .collection("usage")
+      .where(FieldPath.documentId(), ">=", prefix)
+      .where(FieldPath.documentId(), "<", `${prefix}\uffff`)
+      .get();
+    return Object.fromEntries(
+      snap.docs.map((d) => [d.id, Number((d.data() as { seconds?: number }).seconds ?? 0)]),
+    );
   }
 
   async updateRoom(room: Room): Promise<void> {

@@ -376,7 +376,7 @@ Add per-room max duration, an idle timeout, per-user and per-host monthly minute
 **Dani: manual steps**
 
 - In GCP Billing create a budget of £50/month on the project with alerts at 50%, 80% and 100% (£25 / £40 / £50).
-- Set spend limits at OpenAI, Deepgram, ElevenLabs and Google AI Studio/Cloud quotas where offered.
+- Set spend limits at Deepgram, Cartesia and Google Cloud/Gemini quotas (done; there is no OpenAI or ElevenLabs account).
 - Confirm the current LiveKit free-tier limits against the pricing page (minutes, concurrent participants, agent hosting) and tell the session if they differ from `docs/costs.md`.
 
 ---

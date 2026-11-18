@@ -17,7 +17,7 @@ import {
   DirectAgent,
   loadModels,
 } from "./pipeline.js";
-import { fetchMcpToken, fetchRoomKeys, reportUsage, UsageMeter } from "./keys.js";
+import { fetchMcpToken, fetchRoomKeys, reportUsageLog, UsageCollector } from "./keys.js";
 import { openMcpRoom, parseMcpConfig, type ActionLogEntry, type McpRoom } from "./mcp/index.js";
 import { parseRoomProviders, providersFromLevels, withRoomKeys } from "./providers/index.js";
 import {
@@ -93,20 +93,34 @@ export default defineAgent({
     live.session = session;
     attachLatencyLogging(session, directAgent, ctx.room.name);
     await session.start({ agent: directAgent, room: ctx.room });
-    if (roomKeys?.mode === "trial") {
-      // The server counts the trial; the worker only reports seconds and stops when it is used up.
-      const meter = new UsageMeter();
+    if (roomKeys) {
+      // The server keeps the usage log and enforces the caps (room length, idle, monthly
+      // minutes, the £50 hosted-key cap and the trial); the worker only reports and stops.
+      const collector = new UsageCollector();
+      for (const p of ctx.room.remoteParticipants.values()) collector.participantJoined(p.identity);
+      ctx.room.on(RoomEvent.ParticipantConnected, (p) => collector.participantJoined(p.identity));
+      ctx.room.on(RoomEvent.ParticipantDisconnected, (p) => collector.participantLeft(p.identity));
+      ctx.room.on(RoomEvent.ActiveSpeakersChanged, (s) => s.length > 0 && collector.activity());
       session.on(voice.AgentSessionEventTypes.AgentStateChanged, (ev) =>
-        meter.setState(ev.newState),
+        collector.agentState(ev.newState),
       );
-      const timer = setInterval(() => {
-        void reportUsage(ctx.room.name ?? "", meter.take()).then((more) => {
-          if (!more) void session.close();
-        });
-      }, 10_000);
+      session.on(voice.AgentSessionEventTypes.MetricsCollected, (ev) =>
+        collector.metrics(
+          ev.metrics,
+          [...ctx.room.remoteParticipants.values()][0]?.identity ?? "session",
+        ),
+      );
+      const send = async () => {
+        const verdict = await reportUsageLog(ctx.room.name ?? "", collector.take());
+        if (!verdict.available) {
+          writeLog({ event: "agent_stopped", roomId: ctx.room.name, reason: verdict.stop });
+          void session.close();
+        }
+      };
+      const timer = setInterval(() => void send().catch(() => {}), 10_000);
       ctx.addShutdownCallback(async () => {
         clearInterval(timer);
-        await reportUsage(ctx.room.name ?? "", meter.take());
+        await reportUsageLog(ctx.room.name ?? "", collector.take()).catch(() => {});
       });
     }
     writeLog({ event: "agent_joined", roomId: ctx.room.name });

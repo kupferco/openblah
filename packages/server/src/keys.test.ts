@@ -301,7 +301,7 @@ describe("trial", () => {
     await saveAll("u1", "paid");
     const id = await room("u1");
     const r = await call("POST", `/internal/rooms/${id}/usage`, { seconds: 50 }, AGENT);
-    expect(await r.json()).toEqual({ counted: false });
+    expect(await r.json()).toMatchObject({ counted: false });
   });
 });
 
