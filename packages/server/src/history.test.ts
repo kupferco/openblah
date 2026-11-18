@@ -16,6 +16,7 @@ function setup() {
     updateRoomMetadata: vi.fn(async () => {}),
     deleteRoom: vi.fn(async () => {}),
     removeParticipant: vi.fn(async () => {}),
+    sendData: vi.fn(async () => {}),
     dispatchAgent: vi.fn(async () => ({ dispatchId: "AD", created: true })),
     createToken: vi.fn(async (r) => `tok:${r.userId}`),
   };
