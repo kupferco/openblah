@@ -8,6 +8,7 @@ import {
 } from "@openblah/web/react";
 import { classifyError, type BrowserSupport, type MicState } from "./lib.js";
 import type { MicCheck } from "./mic.js";
+import { holdWakeLock, inAppBrowserName, isMobileUserAgent, unlockAudio } from "./mobile.js";
 
 export interface AppProps {
   token: string | null;
@@ -65,6 +66,13 @@ export function App(props: AppProps) {
   const [history, setHistory] = useState(false);
 
   const connected = room.status === "connected" || room.status === "reconnecting";
+  const mobile = isMobileUserAgent(navigator.userAgent);
+  // Keep the screen on during the call to reduce drops when the phone would sleep.
+  useEffect(() => {
+    if (!connected) return;
+    const lock = holdWakeLock();
+    return () => lock.release();
+  }, [connected]);
   useEffect(() => {
     if (connected) setWasConnected(true);
   }, [connected]);
@@ -89,9 +97,15 @@ export function App(props: AppProps) {
   }, [ended, token, props]);
 
   if (!support.ok) {
+    const inApp = inAppBrowserName(navigator.userAgent);
     return (
       <Notice title="This browser can't join">
-        {support.reason} Try the latest Chrome, Safari or Firefox on a computer.
+        {support.reason}{" "}
+        {inApp
+          ? "This looks like an in-app browser. Open the link in Safari or Chrome instead (use the share or “open in browser” menu)."
+          : mobile
+            ? "Try Safari on iPhone or Chrome on Android, updated to the latest version."
+            : "Try the latest Chrome, Safari or Firefox."}
       </Notice>
     );
   }
@@ -121,6 +135,12 @@ export function App(props: AppProps) {
   if (connected) {
     return (
       <Shell>
+        {mobile && (
+          <p className="banner" role="note">
+            Keep this tab open and the screen on. If you switch apps or lock your phone, the call
+            may drop.
+          </p>
+        )}
         <p className="status">
           {room.status === "reconnecting" ? "Reconnecting…" : "You are in the call"}
           {" · "}Agent: <span data-testid="agent-state">{AGENT_LABEL[agent] ?? agent}</span>
@@ -247,6 +267,7 @@ export function App(props: AppProps) {
         className="primary"
         disabled={!canJoin}
         onClick={() => {
+          unlockAudio();
           setLeft(false);
           invite.join(name.trim(), agreed).catch(() => {});
         }}
