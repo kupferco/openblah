@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "lib": ["ES2022", "DOM"],
+    "jsx": "react-jsx",
+    "types": ["node"],
+    "paths": {
+      "@openblah/core": ["./packages/core/src/index.ts"],
+      "@openblah/core/react": ["./packages/core/src/react.ts"]
+    }
+  },
+  "include": ["packages/web/src", "packages/react-native/src", "packages/core/src"],
+  "exclude": ["**/*.test.ts", "**/*.test.tsx"]
+}

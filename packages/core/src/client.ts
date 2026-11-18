@@ -59,8 +59,9 @@ export interface ToolApproval {
   expiresAt: string;
 }
 
-/** Data topic the agent publishes approval requests on, and the owner's answer goes back on. */
+/** Data topic the agent publishes approval requests on, and the owner's answer goes back on. @internal */
 export const APPROVAL_TOPIC = "openblah.approval";
+/** Wire-level detail. @internal */
 export const APPROVAL_RESPONSE_TOPIC = "openblah.approval.response";
 
 /** Everything a UI needs, as one immutable snapshot. */
@@ -103,12 +104,13 @@ export interface ClientEvents {
   inviteRequest: InviteRequestMessage;
 }
 
-/** Attribute the LiveKit agent publishes its state under. */
+/** Attribute the LiveKit agent publishes its state under. @internal */
 export const AGENT_STATE_ATTRIBUTE = "lk.agent.state";
 
 /**
  * Derive the agent state from the agent participant's attributes.
  * Stubbed until the agent exists: no agent participant gives `unavailable`.
+ * @internal
  */
 export function deriveAgentState(
   agent: { attributes: Record<string, string> } | undefined,
@@ -127,7 +129,7 @@ export function deriveAgentState(
   }
 }
 
-/** The part of the LiveKit `Room` the client uses. Lets tests pass a fake. */
+/** The part of the LiveKit `Room` the client uses. Lets tests pass a fake. @internal */
 export type RoomLike = Pick<
   Room,
   | "connect"

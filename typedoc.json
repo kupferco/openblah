@@ -1,0 +1,22 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "name": "OpenBlah SDK API reference",
+  "plugin": ["typedoc-plugin-markdown"],
+  "tsconfig": "tsconfig.docs.json",
+  "entryPoints": [
+    "packages/web/src/index.ts",
+    "packages/web/src/react.ts",
+    "packages/react-native/src/index.ts"
+  ],
+  "entryPointStrategy": "resolve",
+  "out": "docs/api-reference",
+  "excludeInternal": true,
+  "excludePrivate": true,
+  "excludeExternals": true,
+  "readme": "none",
+  "hidePageHeader": true,
+  "hideBreadcrumbs": true,
+  "githubPages": false,
+  "gitRevision": "main",
+  "disableSources": true
+}

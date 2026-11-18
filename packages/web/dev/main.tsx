@@ -1,9 +1,9 @@
 import { createRoot } from "react-dom/client";
 import { useMemo, useRef, useState } from "react";
-import { OpenBlahClient } from "../src/index.js";
-import { copyInviteLink } from "../src/invite.js";
+import { OpenBlahClient, copyInviteLink } from "@openblah/web";
 import {
   OpenBlahProvider,
+  OpenBlahRoom,
   useAgentControl,
   useAgentState,
   useAiPause,
@@ -16,7 +16,7 @@ import {
   useRole,
   useRoom,
   useToolApprovals,
-} from "../src/react.js";
+} from "@openblah/web/react";
 
 /** Pasted invite link or bare token: the token is the last path segment. */
 function tokenFrom(input: string): string {
@@ -287,7 +287,43 @@ function Page(props: { apiKey: string }) {
   );
 }
 
+/** The ready component: paste the same URL and token as above. */
+function Ready() {
+  const [url, setUrl] = useState("");
+  const [token, setToken] = useState("");
+  const [go, setGo] = useState(false);
+  return (
+    <main style={{ fontFamily: "sans-serif", maxWidth: 520, margin: "2rem auto" }}>
+      <h1>OpenBlah dev page: {"<OpenBlahRoom />"}</h1>
+      {!go && (
+        <>
+          <input
+            placeholder="wss://your-project.livekit.cloud"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            style={box}
+          />
+          <textarea
+            placeholder="token"
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            rows={3}
+            style={box}
+          />
+          <button disabled={!url || !token} onClick={() => setGo(true)}>
+            Mount the component
+          </button>
+        </>
+      )}
+      {go && (
+        <OpenBlahRoom serverUrl={url.trim()} token={token.trim()} onLeave={() => setGo(false)} />
+      )}
+    </main>
+  );
+}
+
 function Root() {
+  const [ready, setReady] = useState(new URLSearchParams(location.search).has("ready"));
   const params = new URLSearchParams(location.search);
   const [apiUrl, setApiUrl] = useState(params.get("api") ?? "http://localhost:8080/v1");
   const [apiKey, setApiKey] = useState(params.get("key") ?? "");
@@ -318,8 +354,14 @@ function Root() {
           style={box}
         />
       </details>
+      <p style={{ fontFamily: "sans-serif", maxWidth: 520, margin: "1rem auto" }}>
+        <label>
+          <input type="checkbox" checked={ready} onChange={(e) => setReady(e.target.checked)} /> Use
+          the ready component instead of the hooks page
+        </label>
+      </p>
       <OpenBlahProvider client={client}>
-        <Page apiKey={apiKey} />
+        {ready ? <Ready /> : <Page apiKey={apiKey} />}
       </OpenBlahProvider>
     </>
   );

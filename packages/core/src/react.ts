@@ -328,3 +328,15 @@ export function useInviteRequests(
 
 export { useHistory, useCall, type UseHistoryOptions, type UseCallOptions } from "./history.js";
 export { useOnboarding, type UseOnboardingOptions } from "./onboarding.js";
+
+export {
+  useRoomView,
+  defaultTheme,
+  defaultLabels,
+  resolveTheme,
+  resolveLabels,
+  type OpenBlahTheme,
+  type OpenBlahLabels,
+  type OpenBlahRoomPart,
+  type OpenBlahRoomBaseProps,
+} from "./room-view.js";

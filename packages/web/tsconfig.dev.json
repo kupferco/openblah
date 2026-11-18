@@ -6,6 +6,8 @@
     "jsx": "react-jsx",
     "types": ["node"],
     "paths": {
+      "@openblah/web": ["./src/index.ts"],
+      "@openblah/web/react": ["./src/react.ts"],
       "@openblah/core": ["../core/src/index.ts"],
       "@openblah/core/react": ["../core/src/react.ts"]
     }
