@@ -17,7 +17,14 @@ import {
   DirectAgent,
   loadModels,
 } from "./pipeline.js";
-import { fetchMcpToken, fetchRoomKeys, reportUsageLog, UsageCollector } from "./keys.js";
+import {
+  fetchMcpToken,
+  fetchRoomKeys,
+  lastHumanLeft,
+  reportAgentOff,
+  reportUsageLog,
+  UsageCollector,
+} from "./keys.js";
 import {
   connectMcp,
   openMcpRoom,
@@ -181,6 +188,7 @@ export default defineAgent({
           destination_identities: [identity],
         });
       },
+      agentOff: () => void reportAgentOff(ctx.room.name ?? ""),
       leave: () => {
         void (async () => {
           await lastSpeech?.waitForPlayout().catch(() => undefined);
@@ -192,6 +200,16 @@ export default defineAgent({
       if (topic !== CONTROL_TOPIC) return;
       const msg = parseControlMessage(payload);
       if (msg) control.onControlMessage(participant ?? null, msg);
+    });
+    // The agent never stays in an empty room: it leaves with the last human (no audio, no cost).
+    ctx.room.on(RoomEvent.ParticipantDisconnected, () => {
+      const others = [...ctx.room.remoteParticipants.values()].map((p) => ({
+        isAgent: p.kind === ParticipantKind.AGENT,
+      }));
+      if (lastHumanLeft(others)) {
+        writeLog({ event: "agent_left", roomId: ctx.room.name, reason: "last human left" });
+        ctx.shutdown("last human left");
+      }
     });
     ctx.room.on(RoomEvent.ParticipantConnected, (p) => {
       writeLog({ event: "participant_joined", roomId: ctx.room.name, paused: control.paused });

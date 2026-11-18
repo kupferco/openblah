@@ -74,15 +74,16 @@ Pass `api` so the client can call the OpenBlah server. The server API key belong
 const client = new OpenBlahClient({ api: { baseUrl: "https://your-backend.example/openblah/v1" } });
 ```
 
-| Hook / method                                 | What it does                                                                                                                                             |
-| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `useRole()`                                   | `host`, `member`, `guest` or null. Each `ParticipantInfo` also has a `role`.                                                                             |
-| `useHostControls()`                           | `isHost`, `createInvite`, `revokeInvite`, `removeParticipant`, `endRoom` (the server rejects non-hosts).                                                 |
-| `useInviteJoin(token)`                        | Guest side: `preview` (host name, agent name, consent text and version), `join(displayName, accepted)`. Consent is required unless the room's AI is off. |
-| `useConsent()`                                | For someone already in the room: `needed`, `text`, `accept()`.                                                                                           |
-| `useAiPause()`                                | `paused` (true for everyone while the AI is paused), `setPaused`, `toggle`. Anyone can pause; the host or the person who paused can resume.              |
-| `useInviteRequests(handler)`                  | Host only: called when the agent was told "Blah, invite my mother". Show a contact picker or share sheet and resolve `"sent"` or `"declined"`.           |
-| `client.joinWithInvite(token, name, consent)` | Same as `useInviteJoin`'s `join`, without React. Needs `livekitUrl` in the options if the server sends none.                                             |
+| Hook / method                                 | What it does                                                                                                                                                                      |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `useRole()`                                   | `host`, `member`, `guest` or null. Each `ParticipantInfo` also has a `role`.                                                                                                      |
+| `useHostControls()`                           | `isHost`, `createInvite`, `revokeInvite`, `removeParticipant`, `endRoom` (the server rejects non-hosts).                                                                          |
+| `useInviteJoin(token)`                        | Guest side: `preview` (host name, agent name, consent text and version), `join(displayName, accepted)`. Consent is required unless the room's AI is off.                          |
+| `useConsent()`                                | For someone already in the room: `needed`, `text`, `accept()`.                                                                                                                    |
+| `useAgentControl()`                           | The optional agent: `state`, `present`, `bringIn()`, `request()`, `sendOut()`, `approve(id)`, `decline(id)`, `setAnyoneCanAdd()`, `setIdleTimeoutSeconds()`. See `docs/rooms.md`. |
+| `useAiPause()`                                | `paused` (true for everyone while the AI is paused), `setPaused`, `toggle`. Anyone can pause; the host or the person who paused can resume.                                       |
+| `useInviteRequests(handler)`                  | Host only: called when the agent was told "Blah, invite my mother". Show a contact picker or share sheet and resolve `"sent"` or `"declined"`.                                    |
+| `client.joinWithInvite(token, name, consent)` | Same as `useInviteJoin`'s `join`, without React. Needs `livekitUrl` in the options if the server sends none.                                                                      |
 
 While the AI is paused `useAgentState()` is `paused` and the agent says so aloud to anyone who joins.
 

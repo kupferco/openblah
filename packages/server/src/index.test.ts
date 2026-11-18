@@ -12,6 +12,7 @@ function setup() {
     updateRoomMetadata: vi.fn(async () => {}),
     deleteRoom: vi.fn(async () => {}),
     removeParticipant: vi.fn(async () => {}),
+    stopAgent: vi.fn(async () => {}),
     dispatchAgent: vi.fn(async () => ({ dispatchId: "AD_1", created: true })),
   };
   let t = 1_000_000;

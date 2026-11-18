@@ -3,6 +3,8 @@ import { connectMcpServer, type ConnectMcpServerOptions } from "./mcp.js";
 import {
   OpenBlahApi,
   type McpConnection,
+  type AgentBringInResult,
+  type AgentControlState,
   type ConsentGrant,
   type ConsentStatus,
   type CreateInviteOptions,
@@ -59,6 +61,11 @@ export interface ClientSnapshot {
   userId: string | null;
   /** Your role in the room, or null when not connected. */
   role: Role | null;
+  /**
+   * The room metadata the server mirrors (agent setting, pending requests). It changes when the
+   * agent is brought in or sent out, which is when agent controls should reload.
+   */
+  roomMetadata: string | null;
   error: string | null;
 }
 
@@ -145,6 +152,7 @@ const ROOM_EVENTS = [
   RoomEvent.TrackUnmuted,
   RoomEvent.LocalTrackPublished,
   RoomEvent.LocalTrackUnpublished,
+  RoomEvent.RoomMetadataChanged,
   RoomEvent.ConnectionStateChanged,
   RoomEvent.Reconnecting,
   RoomEvent.Reconnected,
@@ -172,6 +180,7 @@ export class OpenBlahClient {
     roomId: null,
     userId: null,
     role: null,
+    roomMetadata: null,
     error: null,
   };
   private readonly onRoomEvent = () => this.refresh();
@@ -251,6 +260,7 @@ export class OpenBlahClient {
       roomId: null,
       userId: null,
       role: null,
+      roomMetadata: null,
     });
     this.emit("disconnected", undefined);
   }
@@ -335,6 +345,45 @@ export class OpenBlahClient {
   async giveConsent(version: string): Promise<void> {
     const { roomId, userId } = this.requireSession();
     await this.requireApi().giveConsent(roomId, userId, version);
+  }
+
+  // ---- Optional agent per room (T18) ----
+
+  /** The room's agent setting, pending requests and who still has to consent. */
+  async getAgentState(): Promise<AgentControlState> {
+    const { roomId, userId } = this.requireSession();
+    return this.requireApi().getAgentState(roomId, userId);
+  }
+
+  /**
+   * Bring the agent in. The host (or anyone, when the room allows it) turns it on: everyone is then
+   * asked for consent again and the agent listens only when all have agreed. Anyone else sends a
+   * request the host approves.
+   */
+  async bringInAgent(): Promise<AgentBringInResult> {
+    const { roomId, userId } = this.requireSession();
+    return this.requireApi().bringInAgent(roomId, userId);
+  }
+
+  /** Send the agent out: it leaves and nothing is listened to. Host, or anyone if the room allows. */
+  async sendOutAgent(): Promise<void> {
+    const { roomId, userId } = this.requireSession();
+    await this.requireApi().sendOutAgent(roomId, userId);
+  }
+
+  /** Host: approve or decline a request to bring the agent in. */
+  async answerAgentRequest(requestId: string, approve: boolean): Promise<void> {
+    const { roomId, userId } = this.requireSession();
+    await this.requireApi().answerAgentRequest(roomId, requestId, userId, approve);
+  }
+
+  /** Host: "anyone can add the agent" and the idle timeout in seconds. */
+  async updateAgentSettings(settings: {
+    anyoneCanAddAgent?: boolean;
+    idleTimeoutSeconds?: number | null;
+  }): Promise<void> {
+    const { roomId, userId } = this.requireSession();
+    await this.requireApi().updateAgentSettings(roomId, userId, settings);
   }
 
   /**
@@ -444,6 +493,7 @@ export class OpenBlahClient {
       roomId: room.name,
       userId: local.identity,
       role: roleFromMetadata(local.metadata),
+      roomMetadata: (room as { metadata?: string }).metadata ?? null,
     });
   }
 }

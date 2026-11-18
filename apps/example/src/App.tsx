@@ -13,6 +13,7 @@ import {
   OpenBlahProvider,
   createOpenBlahClient,
   shareInvite,
+  useAgentControl,
   useAgentState,
   useAiPause,
   useHostControls,
@@ -35,6 +36,7 @@ function Call() {
   const { muted, toggle } = useMute();
   const pause = useAiPause();
   const host = useHostControls();
+  const control = useAgentControl();
   const role = useRole();
   // "Blah, invite my mother": the agent asks; the host picks who and shares the link.
   useInviteRequests(async (req) => {
@@ -97,6 +99,27 @@ function Call() {
           />
         ) : null}
       </View>
+      {control.state?.awaitingConsent ? (
+        <Text style={styles.banner}>Waiting for everyone to consent before the agent listens.</Text>
+      ) : null}
+      <View style={styles.row}>
+        {connected && !control.present ? (
+          <Button
+            title={control.state?.canControl ? "Bring in the agent" : "Ask for the agent"}
+            onPress={() => void control.bringIn().catch(() => {})}
+          />
+        ) : null}
+        {connected && control.present && control.state?.canControl ? (
+          <Button title="Send the agent out" onPress={() => void control.sendOut()} />
+        ) : null}
+      </View>
+      {control.requests.map((r) => (
+        <View key={r.id} style={styles.row}>
+          <Text>{r.displayName} wants the agent</Text>
+          <Button title="Approve" onPress={() => void control.approve(r.id)} />
+          <Button title="Decline" onPress={() => void control.decline(r.id)} />
+        </View>
+      ))}
       <Text>
         Status: {status} {role ? `(${role})` : ""}
       </Text>

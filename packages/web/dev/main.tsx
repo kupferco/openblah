@@ -4,6 +4,7 @@ import { OpenBlahClient } from "../src/index.js";
 import { copyInviteLink } from "../src/invite.js";
 import {
   OpenBlahProvider,
+  useAgentControl,
   useAgentState,
   useAiPause,
   useConsent,
@@ -34,6 +35,7 @@ function Page(props: { apiKey: string }) {
   const pause = useAiPause();
   const host = useHostControls();
   const consent = useConsent();
+  const control = useAgentControl();
   const joined = status === "connected";
 
   // Guest side
@@ -149,6 +151,58 @@ function Page(props: { apiKey: string }) {
             <p style={{ background: "#e0f2fe", padding: 8 }}>
               {consent.text} <button onClick={() => void consent.accept()}>I agree</button>
             </p>
+          )}
+          {control.state && (
+            <section>
+              <h2>
+                Agent: {control.state.agent}
+                {control.present ? " (in the call)" : ""}
+              </h2>
+              {control.state.awaitingConsent && (
+                <p style={{ background: "#fef9c3", padding: 8 }}>
+                  Waiting for consent, nobody is being listened to. Missing:{" "}
+                  {control.state.missing.map((m) => m.displayName).join(", ")}
+                </p>
+              )}
+              {!control.present && (
+                <button onClick={() => void control.bringIn().then((r) => setNote(r.status))}>
+                  {control.state.canControl ? "Bring in the agent" : "Ask the host to bring it in"}
+                </button>
+              )}
+              {control.state.agent === "on" && control.state.canControl && (
+                <button onClick={() => void control.sendOut()}>Send the agent out</button>
+              )}
+              {control.requests.map((r) => (
+                <p key={r.id} style={{ background: "#dcfce7", padding: 8 }}>
+                  {r.displayName} asks to bring the agent in.{" "}
+                  <button onClick={() => void control.approve(r.id)}>Approve</button>{" "}
+                  <button onClick={() => void control.decline(r.id)}>Decline</button>
+                </p>
+              ))}
+              {control.isHost && (
+                <p>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={control.state.anyoneCanAddAgent}
+                      onChange={(e) => void control.setAnyoneCanAdd(e.target.checked)}
+                    />{" "}
+                    Anyone can add the agent
+                  </label>{" "}
+                  Idle timeout (minutes):{" "}
+                  <input
+                    type="number"
+                    min={1}
+                    style={{ width: 60 }}
+                    defaultValue={Math.round(control.state.idleTimeoutSeconds / 60)}
+                    onBlur={(e) =>
+                      e.target.value &&
+                      void control.setIdleTimeoutSeconds(Number(e.target.value) * 60)
+                    }
+                  />
+                </p>
+              )}
+            </section>
           )}
           {host.isHost && (
             <section>

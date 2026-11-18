@@ -137,6 +137,9 @@ export function roomMetadataJson(room: Room): string {
     agent: room.agent,
     agentName: room.agentName,
     sensitive: room.sensitive,
+    anyoneCanAddAgent: room.anyoneCanAddAgent === true,
+    agentAwaitingConsent: room.agentAwaitingConsent === true,
+    agentRequests: room.agentRequests ?? [],
     metadata: room.metadata,
   });
 }
@@ -352,6 +355,9 @@ export function createApp(deps: AppDeps): Hono {
     if (body.sensitive !== undefined && typeof body.sensitive !== "boolean") {
       return c.json({ error: "sensitive must be a boolean" }, 400);
     }
+    if (body.anyoneCanAddAgent !== undefined && typeof body.anyoneCanAddAgent !== "boolean") {
+      return c.json({ error: "anyoneCanAddAgent must be a boolean" }, 400);
+    }
     if (body.metadata !== undefined && !isRecord(body.metadata)) {
       return c.json({ error: "metadata must be an object" }, 400);
     }
@@ -380,6 +386,7 @@ export function createApp(deps: AppDeps): Hono {
       agent: agent as AgentMode,
       agentName,
       sensitive: body.sensitive === true,
+      ...(body.anyoneCanAddAgent === true ? { anyoneCanAddAgent: true } : {}),
       ...(maxDurationSeconds ? { maxDurationSeconds } : {}),
       ...(idleTimeoutSeconds ? { idleTimeoutSeconds } : {}),
       metadata: (body.metadata as Record<string, unknown> | undefined) ?? {},
@@ -616,18 +623,43 @@ export function createApp(deps: AppDeps): Hono {
     return c.json({ id: room.id, ended: true });
   });
 
+  // The agent state, the "anyone can add" setting and the idle timeout. Host only.
   v1.put("/rooms/:id/agent", async (c) => {
     const body = await readBody(c);
     if (!body) return c.json({ error: "invalid JSON body" }, 400);
     const room = await hostRoom(c, body);
     if (room instanceof Response) return room;
-    if (!AGENT_MODES.includes(body.agent as AgentMode)) {
+    if (body.agent !== undefined && !AGENT_MODES.includes(body.agent as AgentMode)) {
       return c.json({ error: "agent must be one of on, off, ask" }, 400);
     }
-    const updated: Room = { ...room, agent: body.agent as AgentMode };
-    await storage.updateRoom(updated);
-    await livekit.updateRoomMetadata(room.id, roomMetadataJson(updated));
-    return c.json(updated);
+    if (body.anyoneCanAddAgent !== undefined && typeof body.anyoneCanAddAgent !== "boolean") {
+      return c.json({ error: "anyoneCanAddAgent must be a boolean" }, 400);
+    }
+    const idle = body.idleTimeoutSeconds;
+    if (
+      idle !== undefined &&
+      idle !== null &&
+      !(typeof idle === "number" && Number.isInteger(idle) && idle > 0 && idle <= 86_400)
+    ) {
+      return c.json({ error: "idleTimeoutSeconds must be an integer from 1 to 86400" }, 400);
+    }
+    let next: Room = { ...room };
+    if (typeof body.anyoneCanAddAgent === "boolean")
+      next.anyoneCanAddAgent = body.anyoneCanAddAgent;
+    if (idle === null) delete next.idleTimeoutSeconds;
+    else if (typeof idle === "number") next.idleTimeoutSeconds = idle;
+    await storage.updateRoom(next);
+    let result: { status: string; missing?: unknown } | null = null;
+    if (body.agent === "on") {
+      const r = await bringIn(next);
+      next = r.room;
+      result = r.result;
+    } else if (body.agent === "off" || body.agent === "ask") {
+      next = await sendOut(next, body.agent);
+    } else {
+      await livekit.updateRoomMetadata(room.id, roomMetadataJson(next));
+    }
+    return c.json({ ...publicRoom(next), ...(result ? { agentStatus: result } : {}) });
   });
 
   // ---- Settings endpoints ----
@@ -798,8 +830,12 @@ export function createApp(deps: AppDeps): Hono {
   const consentState = async (room: Room) => {
     const participants = await activeParticipants(room.id);
     const consents = await storage.listConsents(room.id);
+    // Late consent: when the agent was brought in, earlier consent no longer counts.
+    const since = room.agentConsentSince ? Date.parse(room.agentConsentSince) : 0;
     const ok = new Set(
-      consents.filter((x) => x.textVersion === CONSENT_VERSION).map((x) => x.userId),
+      consents
+        .filter((x) => x.textVersion === CONSENT_VERSION && Date.parse(x.consentedAt) >= since)
+        .map((x) => x.userId),
     );
     const missing = participants.filter((p) => !ok.has(p.userId));
     return { participants, missing };
@@ -843,11 +879,219 @@ export function createApp(deps: AppDeps): Hono {
       textVersion: CONSENT_VERSION,
       consentedAt,
     });
+    // The last missing consent starts the agent that was waiting for it.
+    const fresh = await storage.getRoom(room.id);
+    if (fresh?.agent === "on" && fresh.agentAwaitingConsent && !fresh.endedAt) {
+      await tryStartAgent(fresh).catch(() => undefined);
+    }
     return c.json({ roomId: room.id, userId, textVersion: CONSENT_VERSION, consentedAt });
   });
 
+  // ---- Optional agent per room (T18) ----
+
   /**
-   * Send the agent in. Refused while the room is AI off or any current
+   * Check the caps and keys, wake the worker and dispatch the agent. Used by tap-to-start and
+   * by bringing the agent in. Nothing reaches STT, LLM or TTS before this succeeds.
+   */
+  const startAgent = async (
+    room: Room,
+  ): Promise<
+    | { ok: true; dispatchId: string; created: boolean }
+    | { ok: false; status: 402 | 401 | 403 | 409 | 429; body: Record<string, unknown> }
+  > => {
+    const members = (await storage.listParticipants(room.id))
+      .filter((p) => !p.removedAt)
+      .map((p) => p.userId);
+    const capped = await usage.checkStart(room, members);
+    if (capped) {
+      return {
+        ok: false,
+        status: 429,
+        body: { error: "A monthly minute cap is reached. Try again next month.", code: capped },
+      };
+    }
+    // With no key modes configured the worker uses its own environment keys.
+    const keys = keyModesConfigured ? await resolve(room) : { ok: true as const };
+    if (!keys.ok) {
+      return {
+        ok: false,
+        status: refusalStatus[keys.code],
+        body: { error: keys.message, code: keys.code },
+      };
+    }
+    // Make sure the worker is up (cold start); the call works as a plain room until it joins.
+    await worker.wake().catch(() => false);
+    const r = await livekit.dispatchAgent(
+      room.id,
+      await dispatchMetadata(room, await settingsForAgent(room)),
+    );
+    return { ok: true, ...r };
+  };
+
+  /** Dispatch once everyone has consented; clears the waiting flag when it does. */
+  const tryStartAgent = async (
+    room: Room,
+  ): Promise<{ status: "on" | "awaiting_consent"; missing?: unknown }> => {
+    const { missing } = await consentState(room);
+    if (missing.length > 0) {
+      return {
+        status: "awaiting_consent",
+        missing: missing.map((p) => ({ userId: p.userId, displayName: p.displayName })),
+      };
+    }
+    const r = await startAgent(room);
+    if (!r.ok) throw Object.assign(new Error(String(r.body.error)), { refusal: r });
+    const updated: Room = { ...room };
+    delete updated.agentAwaitingConsent;
+    await storage.updateRoom(updated);
+    await livekit.updateRoomMetadata(room.id, roomMetadataJson(updated));
+    return { status: "on" };
+  };
+
+  /**
+   * Flip the room to `on`. The first time, every participant is asked for consent again and the
+   * agent is only dispatched when all of them have accepted; until then nobody is listened to.
+   */
+  const bringIn = async (
+    room: Room,
+  ): Promise<{ room: Room; result: { status: string; missing?: unknown } }> => {
+    let next = room;
+    if (room.agent !== "on") {
+      next = {
+        ...room,
+        agent: "on",
+        agentConsentSince: now().toISOString(),
+        agentAwaitingConsent: true,
+        agentRequests: [],
+      };
+      await storage.updateRoom(next);
+      await livekit.updateRoomMetadata(room.id, roomMetadataJson(next));
+    } else if (!room.agentAwaitingConsent && room.agentConsentSince) {
+      return { room, result: { status: "on" } };
+    }
+    try {
+      const result = await tryStartAgent(next);
+      return { room: (await storage.getRoom(room.id)) ?? next, result };
+    } catch (e) {
+      // Cap, key or trial refusal: keep the room on but not started; say why.
+      const refusal = (e as { refusal?: { body: Record<string, unknown> } }).refusal;
+      return {
+        room: (await storage.getRoom(room.id)) ?? next,
+        result: { status: "refused", ...(refusal?.body ?? {}) },
+      };
+    }
+  };
+
+  /** Flip the room to `off` (or `ask`): the agent leaves and nothing more is listened to. */
+  const sendOut = async (room: Room, to: "off" | "ask" = "off"): Promise<Room> => {
+    const next: Room = { ...room, agent: to, agentRequests: [] };
+    delete next.agentAwaitingConsent;
+    await storage.updateRoom(next);
+    await livekit.updateRoomMetadata(room.id, roomMetadataJson(next));
+    await livekit.stopAgent(room.id).catch(() => undefined);
+    return next;
+  };
+
+  /** State for the controls: who can change it, what is pending, who has not consented. */
+  v1.get("/rooms/:id/agent", async (c) => {
+    const room = await loadRoom(c);
+    if (room instanceof Response) return room;
+    const role = await roleOf(c, room, actorOf(c, null));
+    if (role instanceof Response) return role;
+    const { missing } = await consentState(room);
+    return c.json({
+      agent: room.agent,
+      agentName: room.agentName,
+      anyoneCanAddAgent: room.anyoneCanAddAgent === true,
+      idleTimeoutSeconds: usage.roomLimits(room).idleTimeoutSeconds,
+      awaitingConsent: room.agent === "on" && room.agentAwaitingConsent === true,
+      missing:
+        room.agent === "on" && room.agentAwaitingConsent
+          ? missing.map((p) => ({ userId: p.userId, displayName: p.displayName }))
+          : [],
+      requests: role === "host" ? (room.agentRequests ?? []) : [],
+      canControl: role === "host" || room.anyoneCanAddAgent === true,
+    });
+  });
+
+  /**
+   * Bring the agent in. The host (or anyone, when the room allows it) turns it on; any other
+   * participant leaves a request for the host to approve.
+   */
+  v1.post("/rooms/:id/agent/bring-in", async (c) => {
+    const body = (await readBody(c)) ?? {};
+    const room = await loadRoom(c);
+    if (room instanceof Response) return room;
+    if (room.endedAt) return c.json({ error: "room has ended" }, 409);
+    const actor = actorOf(c, body);
+    const role = await roleOf(c, room, actor);
+    if (role instanceof Response) return role;
+    if (role === "host" || room.anyoneCanAddAgent === true) {
+      const r = await bringIn(room);
+      return c.json({ ...r.result, agent: r.room.agent });
+    }
+    if (room.agent === "on") return c.json({ status: "on", agent: "on" });
+    const p = await storage.getParticipant(room.id, actor!);
+    const pending = room.agentRequests ?? [];
+    if (!pending.some((q) => q.userId === actor)) {
+      const updated: Room = {
+        ...room,
+        agentRequests: [
+          ...pending,
+          {
+            id: `ar_${randomBytes(9).toString("base64url")}`,
+            userId: actor!,
+            displayName: p?.displayName ?? actor!,
+            requestedAt: now().toISOString(),
+          },
+        ],
+      };
+      await storage.updateRoom(updated);
+      await livekit.updateRoomMetadata(room.id, roomMetadataJson(updated));
+    }
+    return c.json({ status: "requested", agent: room.agent }, 202);
+  });
+
+  /** Send the agent out. Host, or anyone when the room allows it. */
+  v1.post("/rooms/:id/agent/send-out", async (c) => {
+    const body = (await readBody(c)) ?? {};
+    const room = await loadRoom(c);
+    if (room instanceof Response) return room;
+    if (room.endedAt) return c.json({ error: "room has ended" }, 409);
+    const role = await roleOf(c, room, actorOf(c, body));
+    if (role instanceof Response) return role;
+    if (role !== "host" && room.anyoneCanAddAgent !== true) {
+      return c.json({ error: "only the host can send the agent out" }, 403);
+    }
+    const next = await sendOut(room, room.agent === "ask" ? "ask" : "off");
+    return c.json({ status: "off", agent: next.agent });
+  });
+
+  const answerRequest = (approve: boolean) => async (c: Ctx) => {
+    const body = (await readBody(c)) ?? {};
+    const room = await hostRoom(c, body);
+    if (room instanceof Response) return room;
+    const reqs = room.agentRequests ?? [];
+    if (!reqs.some((q) => q.id === c.req.param("requestId"))) {
+      return c.json({ error: "request not found" }, 404);
+    }
+    if (approve) {
+      const r = await bringIn(room);
+      return c.json({ ...r.result, agent: r.room.agent });
+    }
+    const updated: Room = {
+      ...room,
+      agentRequests: reqs.filter((q) => q.id !== c.req.param("requestId")),
+    };
+    await storage.updateRoom(updated);
+    await livekit.updateRoomMetadata(room.id, roomMetadataJson(updated));
+    return c.json({ status: "declined", agent: updated.agent });
+  };
+  v1.post("/rooms/:id/agent/requests/:requestId/approve", answerRequest(true));
+  v1.post("/rooms/:id/agent/requests/:requestId/decline", answerRequest(false));
+
+  /**
+   * Send the agent in (host). Refused while the room is AI off or any current
    * participant has not consented; the host can set the room to AI off instead.
    */
   v1.post("/rooms/:id/agent/dispatch", async (c) => {
@@ -855,20 +1099,17 @@ export function createApp(deps: AppDeps): Hono {
     const room = await hostRoom(c, body);
     if (room instanceof Response) return room;
     if (room.agent === "off") return c.json({ error: "the agent is off in this room" }, 409);
-    const { missing } = await consentState(room);
-    if (missing.length > 0) {
+    // `ask` means off until someone invites it: the host asking for it is that invitation.
+    const { result } = await bringIn(room);
+    if (result.status === "awaiting_consent") {
+      return c.json({ error: "not every participant has consented", missing: result.missing }, 409);
+    }
+    if (result.status === "refused") {
       return c.json(
-        {
-          error: "not every participant has consented",
-          missing: missing.map((p) => ({ userId: p.userId, displayName: p.displayName })),
-        },
+        { error: (result as { error?: string }).error ?? "the agent was refused" },
         409,
       );
     }
-    await livekit.dispatchAgent(
-      room.id,
-      await dispatchMetadata(room, await settingsForAgent(room)),
-    );
     return c.json({ dispatched: true });
   });
 
@@ -939,8 +1180,8 @@ export function createApp(deps: AppDeps): Hono {
     if (consent && consent.textVersion !== CONSENT_VERSION) {
       return c.json({ error: "consent textVersion is not current", current: CONSENT_VERSION }, 400);
     }
-    // With the agent off nothing is listening, so consent can wait until it is brought in.
-    if (room.agent !== "off" && !consented) {
+    // Until the agent is brought in nothing is listening, so consent can wait (it is asked again then).
+    if (room.agent === "on" && !consented) {
       return c.json({ error: "consent is required to join this room" }, 400);
     }
     // Check everything before using up an invite slot.
@@ -983,30 +1224,22 @@ export function createApp(deps: AppDeps): Hono {
 
   // Tap-to-start: the host app calls this when the user taps to talk to the agent.
   v1.post("/rooms/:id/agent", async (c) => {
-    const room = await storage.getRoom(c.req.param("id"));
+    let room = await storage.getRoom(c.req.param("id"));
     if (!room) return c.json({ error: "room not found" }, 404);
     if (room.agent === "off") return c.json({ error: "agent is off for this room" }, 409);
     if (room.endedAt) return c.json({ error: "room has ended" }, 409);
-    const members = (await storage.listParticipants(room.id))
-      .filter((p) => !p.removedAt)
-      .map((p) => p.userId);
-    const capped = await usage.checkStart(room, members);
-    if (capped) {
-      return c.json(
-        { error: "A monthly minute cap is reached. Try again next month.", code: capped },
-        429,
-      );
+    // The host's own app asking for the agent is the invitation that turns an `ask` room on.
+    if (room.agent === "ask") {
+      room = { ...room, agent: "on", agentConsentSince: now().toISOString() };
+      await storage.updateRoom(room);
+      await livekit.updateRoomMetadata(room.id, roomMetadataJson(room));
     }
-    // With no key modes configured the worker uses its own environment keys.
-    const keys = keyModesConfigured ? await resolve(room) : { ok: true as const };
-    if (!keys.ok) return c.json({ error: keys.message, code: keys.code }, refusalStatus[keys.code]);
-    // Make sure the worker is up (cold start); the call works as a plain room until it joins.
-    await worker.wake().catch(() => false);
-    const { dispatchId, created } = await livekit.dispatchAgent(
-      room.id,
-      await dispatchMetadata(room, await settingsForAgent(room)),
+    const r = await startAgent(room);
+    if (!r.ok) return c.json(r.body, r.status);
+    return c.json(
+      { roomId: room.id, dispatchId: r.dispatchId, created: r.created },
+      r.created ? 201 : 200,
     );
-    return c.json({ roomId: room.id, dispatchId, created }, created ? 201 : 200);
   });
 
   // Read-only usage log for the host: minutes, STT seconds, TTS characters, tokens and estimated cost.
@@ -1280,6 +1513,13 @@ export function createApp(deps: AppDeps): Hono {
     const r = await resolve(room);
     if (!r.ok) return c.json({ error: r.message, code: r.code }, refusalStatus[r.code]);
     return c.json({ mode: r.mode, tier: r.tier, keys: r.keys });
+  });
+  // The agent was asked by voice to leave: the room goes to `off`, like the host's button.
+  internal.post("/rooms/:id/agent-off", async (c) => {
+    const room = await storage.getRoom(c.req.param("id"));
+    if (!room) return c.json({ error: "room not found" }, 404);
+    if (!room.endedAt && room.agent === "on") await sendOut(room, "off");
+    return c.json({ agent: "off" });
   });
   internal.post("/rooms/:id/usage", async (c) => {
     const room = await storage.getRoom(c.req.param("id"));

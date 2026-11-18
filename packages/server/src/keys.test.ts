@@ -17,6 +17,7 @@ function setup(opts: { product?: boolean; trial?: boolean; trialSeconds?: number
     updateRoomMetadata: vi.fn(async () => {}),
     deleteRoom: vi.fn(async () => {}),
     removeParticipant: vi.fn(async () => {}),
+    stopAgent: vi.fn(async () => {}),
   };
   const verifier: TokenVerifier = {
     verify: async (t) =>
@@ -218,6 +219,7 @@ describe("sensitive rooms", () => {
         updateRoomMetadata: async () => {},
         deleteRoom: async () => {},
         removeParticipant: async () => {},
+        stopAgent: async () => {},
       },
       productKeys: { "*": { keys: PRODUCT, tier: "free" } },
     });

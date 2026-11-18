@@ -16,7 +16,14 @@ import {
   type ClientSnapshot,
   type ParticipantInfo,
 } from "./client.js";
-import type { ConsentStatus, CreateInviteOptions, Invite, InvitePreview } from "./api.js";
+import type {
+  AgentBringInResult,
+  AgentControlState,
+  ConsentStatus,
+  CreateInviteOptions,
+  Invite,
+  InvitePreview,
+} from "./api.js";
 import type { InviteRequestMessage, Role } from "./protocol.js";
 
 const ClientContext = createContext<OpenBlahClient | null>(null);
@@ -107,6 +114,83 @@ export function useHostControls() {
     revokeInvite: (inviteId: string) => client.revokeInvite(inviteId),
     removeParticipant: (userId: string) => client.removeParticipant(userId),
     endRoom: () => client.endRoom(),
+  };
+}
+
+/**
+ * The optional agent: bring it in, send it out, ask for it, approve a request. Each room has the
+ * agent `off` (a plain call), `on` or `ask` (off until someone invites it).
+ *
+ * - `present` is true while the agent is in the call; `state.agent` is the setting.
+ * - `bringIn()` / `request()` call the same endpoint: the host (or anyone, when `state.anyoneCanAddAgent`)
+ *   turns it on and everyone is asked for consent again (`useConsent`); anyone else sends a request,
+ *   which shows up for the host in `requests`.
+ * - `approve(id)` / `decline(id)` are host only. `sendOut()` makes the agent leave.
+ * - While `state.awaitingConsent` is true the agent listens to nobody: show who is `missing`.
+ */
+export function useAgentControl() {
+  const client = useClient();
+  const { status, role, roomMetadata, participants } = useSnapshot(client);
+  const [state, setState] = useState<AgentControlState | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const connected = status === "connected";
+
+  const refresh = useCallback(async () => {
+    try {
+      setState(await client.getAgentState());
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }, [client]);
+
+  // The server mirrors the setting in the room metadata, so a change anywhere reloads this.
+  const present = participants.some((p) => p.isAgent);
+  useEffect(() => {
+    if (connected) void refresh();
+    else setState(null);
+  }, [connected, roomMetadata, present, refresh]);
+
+  const run = useCallback(
+    async <T>(fn: () => Promise<T>): Promise<T> => {
+      try {
+        const r = await fn();
+        await refresh();
+        return r;
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+        throw e;
+      }
+    },
+    [refresh],
+  );
+
+  const bringIn = useCallback(
+    (): Promise<AgentBringInResult> => run(() => client.bringInAgent()),
+    [client, run],
+  );
+
+  return {
+    state,
+    /** The agent is in the call right now. */
+    present,
+    isHost: role === "host",
+    /** Pending requests (host only). */
+    requests: state?.requests ?? [],
+    error,
+    bringIn,
+    /** Same as `bringIn`: for a non-host it sends a request the host approves. */
+    request: bringIn,
+    sendOut: () => run(() => client.sendOutAgent()),
+    approve: (requestId: string) => run(() => client.answerAgentRequest(requestId, true)),
+    decline: (requestId: string) => run(() => client.answerAgentRequest(requestId, false)),
+    /** Host: let any participant bring the agent in and send it out. */
+    setAnyoneCanAdd: (anyone: boolean) =>
+      run(() => client.updateAgentSettings({ anyoneCanAddAgent: anyone })),
+    /** Host: the agent leaves after this many seconds of silence. */
+    setIdleTimeoutSeconds: (seconds: number | null) =>
+      run(() => client.updateAgentSettings({ idleTimeoutSeconds: seconds })),
+    refresh,
   };
 }
 
