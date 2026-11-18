@@ -1,5 +1,6 @@
 import type { UserRecord } from "./accounts.js";
-import type { Provider, StoredKey } from "./keys.js";
+import type { KeyProvider, StoredKey } from "./keys.js";
+import type { SettingsLevel } from "./settings.js";
 import type { McpConnectionRecord } from "./mcp-oauth.js";
 
 export type AgentMode = "on" | "off" | "ask";
@@ -17,6 +18,8 @@ export interface Room {
   metadata: Record<string, unknown>;
   /** MCP servers for the agent. Server-side only: holds user tokens, never sent to clients. */
   mcp?: Record<string, unknown>;
+  /** Room-level model and language (the top level of the three, T17). */
+  settings?: SettingsLevel;
   createdAt: string;
   /** Server-only: id of the API key that created the room (picks product keys). Never returned. */
   productKeyId?: string;
@@ -61,12 +64,24 @@ export interface ConsentRecord {
 }
 
 /** Storage for rooms, invites, participants and consent (later also history). */
+/** Post-call summary written by the agent when the call ends (T9). Full history screens come in T19. */
+export interface CallSummary {
+  roomId: string;
+  /** Language of `text`: the room's language. */
+  language: "en" | "pt";
+  text: string;
+  notes: string[];
+  actions: Array<{ text: string; owner?: string; done: boolean }>;
+  participants: string[];
+  createdAt: string;
+}
+
 export interface Storage {
   createRoom(room: Room): Promise<void>;
   getRoom(id: string): Promise<Room | null>;
   /** Saved BYOK keys (encrypted). */
   putKey(key: StoredKey): Promise<void>;
-  deleteKey(ownerId: string, provider: Provider): Promise<boolean>;
+  deleteKey(ownerId: string, provider: KeyProvider): Promise<boolean>;
   listKeys(ownerId: string): Promise<StoredKey[]>;
   /** MCP OAuth connections (tokens sealed). Callers check `ownerId`. */
   putMcpConnection(rec: McpConnectionRecord): Promise<void>;
@@ -76,6 +91,9 @@ export interface Storage {
   /** Minimal user records for the standalone app. */
   upsertUser(user: UserRecord): Promise<UserRecord>;
   getUser(id: string): Promise<UserRecord | null>;
+  /** Settings saved at the user or product level, keyed by scope id (`user:<id>`, `product:<id>`). */
+  getSettings(scopeId: string): Promise<SettingsLevel | null>;
+  putSettings(scopeId: string, settings: SettingsLevel): Promise<void>;
   /** Trial usage counters (seconds), keyed by scope id. */
   getUsage(counterId: string): Promise<number>;
   /** Atomically add seconds; returns the new total. */
@@ -101,6 +119,10 @@ export interface Storage {
 
   saveConsent(c: ConsentRecord): Promise<void>;
   listConsents(roomId: string): Promise<ConsentRecord[]>;
+
+  /** One summary per room; saving again replaces it. */
+  saveSummary(summary: CallSummary): Promise<void>;
+  getSummary(roomId: string): Promise<CallSummary | null>;
 }
 
 export interface TokenRequest {
@@ -119,6 +141,11 @@ export interface LiveKitGateway {
   updateRoomMetadata(roomId: string, metadata: string): Promise<void>;
   deleteRoom(roomId: string): Promise<void>;
   removeParticipant(roomId: string, userId: string): Promise<void>;
+  /**
+   * Send a data message from the server to the agent in the room. The agent
+   * only trusts the tool-approval topic when it comes from the server.
+   */
+  sendData(roomId: string, topic: string, payload: string): Promise<void>;
   /** Mint a short-lived join token. */
   createToken(req: TokenRequest): Promise<string>;
   /**

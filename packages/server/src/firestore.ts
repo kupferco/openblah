@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
 import { FieldPath, FieldValue, Firestore } from "@google-cloud/firestore";
 import type { UserRecord } from "./accounts.js";
-import type { Provider, StoredKey } from "./keys.js";
+import type { KeyProvider, StoredKey } from "./keys.js";
+import type { SettingsLevel } from "./settings.js";
 import type { McpConnectionRecord } from "./mcp-oauth.js";
-import type { ConsentRecord, Invite, Participant, Room, Storage } from "./types.js";
+import type { CallSummary, ConsentRecord, Invite, Participant, Room, Storage } from "./types.js";
 
 /** Firestore ids cannot hold arbitrary user ids, so hash the pair. */
 function pairId(roomId: string, userId: string): string {
@@ -27,7 +28,7 @@ export class FirestoreStorage implements Storage {
     return snap.exists ? (snap.data() as Room) : null;
   }
 
-  private keyDoc(ownerId: string, provider: Provider) {
+  private keyDoc(ownerId: string, provider: KeyProvider) {
     return this.db.collection("users").doc(ownerId).collection("keys").doc(provider);
   }
 
@@ -35,7 +36,7 @@ export class FirestoreStorage implements Storage {
     await this.keyDoc(key.ownerId, key.provider).set(key);
   }
 
-  async deleteKey(ownerId: string, provider: Provider): Promise<boolean> {
+  async deleteKey(ownerId: string, provider: KeyProvider): Promise<boolean> {
     const ref = this.keyDoc(ownerId, provider);
     const snap = await ref.get();
     if (!snap.exists) return false;
@@ -82,6 +83,15 @@ export class FirestoreStorage implements Storage {
   async getUser(id: string): Promise<UserRecord | null> {
     const snap = await this.db.collection("accounts").doc(id).get();
     return snap.exists ? (snap.data() as UserRecord) : null;
+  }
+
+  async getSettings(scopeId: string): Promise<SettingsLevel | null> {
+    const snap = await this.db.collection("settings").doc(scopeId).get();
+    return snap.exists ? (snap.data() as SettingsLevel) : null;
+  }
+
+  async putSettings(scopeId: string, settings: SettingsLevel): Promise<void> {
+    await this.db.collection("settings").doc(scopeId).set(clean(settings));
   }
 
   async getUsage(counterId: string): Promise<number> {
@@ -168,6 +178,15 @@ export class FirestoreStorage implements Storage {
   async listConsents(roomId: string): Promise<ConsentRecord[]> {
     const snap = await this.db.collection("consents").where("roomId", "==", roomId).get();
     return snap.docs.map((d) => d.data() as ConsentRecord);
+  }
+
+  async saveSummary(summary: CallSummary): Promise<void> {
+    await this.db.collection("summaries").doc(summary.roomId).set(clean(summary));
+  }
+
+  async getSummary(roomId: string): Promise<CallSummary | null> {
+    const snap = await this.db.collection("summaries").doc(roomId).get();
+    return snap.exists ? (snap.data() as CallSummary) : null;
   }
 }
 

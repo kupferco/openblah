@@ -58,6 +58,10 @@ function setup(speaker = "host-1", allowTools?: string[]) {
     sayHold: vi.fn(),
     setWorking: vi.fn(),
     showNote: vi.fn(),
+    userTurnCount: () => 0,
+    showApproval: vi.fn(),
+    resolveApproval: vi.fn(),
+    announce: vi.fn(),
   };
   const config = {
     servers: [{ id: "demo", url, userToken: "tok-123" }],
@@ -75,7 +79,12 @@ describe("MCP client in the agent", () => {
   it("answers via a read-only tool, sends the user token, and logs the action", async () => {
     const s = setup();
     const room = await openMcpRoom({ roomId: "rm_1", provider: {}, ...s });
-    expect(Object.keys(room.tools).sort()).toEqual(["book_table", "dump", "get_weather"]);
+    expect(Object.keys(room.tools).sort()).toEqual([
+      "book_table",
+      "confirm_pending_action",
+      "dump",
+      "get_weather",
+    ]);
     const out = await run(room.tools, "get_weather", { city: "Lisbon" });
     expect(out).toBe("Sunny in Lisbon");
     expect(lastAuth).toBe("Bearer tok-123");
@@ -92,12 +101,12 @@ describe("MCP client in the agent", () => {
     await room.close();
   });
 
-  it("blocks tools that change something or are unknown", async () => {
+  it("does not run tools that change something or are unknown until confirmed", async () => {
     const s = setup();
     const room = await openMcpRoom({ roomId: "rm_1", provider: {}, ...s });
     await run(room.tools, "book_table", {});
     expect(writes).toEqual([]);
-    expect(s.entries[0]?.status).toBe("blocked");
+    expect(s.entries[0]?.status).toBe("pending");
     await room.close();
   });
 

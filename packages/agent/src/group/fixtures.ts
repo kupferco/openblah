@@ -1,5 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import type { RoomMode } from "./types.js";
 import { writeWav } from "./wav.js";
 
 export const FIXTURE_RATE = 16_000;
@@ -20,6 +21,12 @@ export interface Scenario {
   turns: FixtureTurn[];
   /** Expected decision for the LAST human turn. */
   expected: "speak" | "stay_quiet";
+  /** Room mode at the start (default listening). */
+  mode?: RoomMode;
+  /** Room mode expected at the end, when the scenario changes it. */
+  expectedMode?: RoomMode;
+  /** Facilitating rule expected on the last turn. */
+  expectedFacilitation?: string;
 }
 
 /** Fixture scenarios: addressed by name, humans talking, opinion requested, wrong name. */
@@ -97,6 +104,115 @@ export const SCENARIOS: Scenario[] = [
       { speaker: "Dani", text: "Penelope, o que você acha do horário?", startMs: 3600 },
     ],
     expected: "stay_quiet",
+  },
+];
+
+/** T9 scenarios: modes, notes, mute and Facilitating rules. */
+export const BEHAVIOUR_SCENARIOS: Scenario[] = [
+  {
+    id: "en-chat-long",
+    language: "en",
+    description: "Two humans keep talking for four turns: silence, even in Facilitating mode",
+    mode: "facilitating",
+    participants: ["Dani", "Penelope"],
+    turns: [
+      { speaker: "Dani", text: "How was the flight back yesterday?", startMs: 300 },
+      { speaker: "Penelope", text: "Long, but the seats were fine.", startMs: 3800 },
+      { speaker: "Dani", text: "Did you sleep a little at least?", startMs: 7000 },
+      { speaker: "Penelope", text: "Two hours, I am still tired.", startMs: 10200 },
+    ],
+    expected: "stay_quiet",
+  },
+  {
+    id: "en-decision",
+    language: "en",
+    description: "Facilitating: a decision is reached, the agent speaks briefly",
+    mode: "facilitating",
+    participants: ["Dani", "Penelope"],
+    turns: [
+      { speaker: "Penelope", text: "Friday or Monday for the launch?", startMs: 300 },
+      { speaker: "Dani", text: "Okay, we decided, let's go with Friday.", startMs: 3600 },
+    ],
+    expected: "speak",
+    expectedFacilitation: "decision_reached",
+  },
+  {
+    id: "en-decision-listening",
+    language: "en",
+    description: "Listening (default): the same decision is not commented on",
+    participants: ["Dani", "Penelope"],
+    turns: [
+      { speaker: "Penelope", text: "Friday or Monday for the launch?", startMs: 300 },
+      { speaker: "Dani", text: "Okay, we decided, let's go with Friday.", startMs: 3600 },
+    ],
+    expected: "stay_quiet",
+  },
+  {
+    id: "en-open-action",
+    language: "en",
+    description: "Facilitating: a task has no owner, the agent asks who takes it",
+    mode: "facilitating",
+    participants: ["Dani", "Penelope"],
+    turns: [
+      {
+        speaker: "Dani",
+        text: "Someone needs to book the venue before the weekend.",
+        startMs: 300,
+      },
+    ],
+    expected: "speak",
+    expectedFacilitation: "open_action",
+  },
+  {
+    id: "en-switch-mode",
+    language: "en",
+    description: "Switch to Facilitating by voice",
+    participants: ["Dani", "Penelope"],
+    turns: [{ speaker: "Dani", text: "Blah, switch to facilitating mode.", startMs: 300 }],
+    expected: "speak",
+    expectedMode: "facilitating",
+  },
+  {
+    id: "pt-switch-mode",
+    language: "pt",
+    description: "Switch to Listening by voice, in Portuguese",
+    mode: "facilitating",
+    participants: ["Dani", "Penelope"],
+    turns: [{ speaker: "Dani", text: "Blah, só ouça por favor.", startMs: 300 }],
+    expected: "speak",
+    expectedMode: "listening",
+  },
+  {
+    id: "en-mute",
+    language: "en",
+    description: "Muted for everyone: even when addressed the agent stays quiet",
+    participants: ["Dani", "Penelope"],
+    turns: [
+      { speaker: "Penelope", text: "Blah, mute yourself for a bit.", startMs: 300 },
+      { speaker: "Dani", text: "Blah, what do you think about Friday?", startMs: 4200 },
+    ],
+    expected: "stay_quiet",
+  },
+  {
+    id: "en-notes",
+    language: "en",
+    description: "Notes and actions by voice, then asked for the open actions",
+    participants: ["Dani", "Penelope"],
+    turns: [
+      { speaker: "Dani", text: "Blah, note that the launch is on Friday.", startMs: 300 },
+      { speaker: "Dani", text: "Blah, add an action: Penelope sends the invoice.", startMs: 4200 },
+      { speaker: "Penelope", text: "Blah, what is still open?", startMs: 9000 },
+    ],
+    expected: "speak",
+  },
+  {
+    id: "en-direct",
+    language: "en",
+    description: "Direct mode: the host talks, the agent answers without its name",
+    mode: "direct",
+    participants: ["Dani"],
+    turns: [{ speaker: "Dani", text: "What is the capital of Portugal?", startMs: 300 }],
+    expected: "speak",
   },
 ];
 

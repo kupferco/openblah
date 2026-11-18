@@ -14,6 +14,7 @@ import {
   useParticipants,
   useRole,
   useRoom,
+  useToolApprovals,
 } from "../src/react.js";
 
 /** Pasted invite link or bare token: the token is the last path segment. */
@@ -29,6 +30,7 @@ function Page(props: { apiKey: string }) {
   const { status, error, connect, disconnect } = useRoom();
   const participants = useParticipants();
   const agent = useAgentState();
+  const { pending, approve, decline } = useToolApprovals();
   const role = useRole();
   const { muted, toggle } = useMute();
   const pause = useAiPause();
@@ -145,6 +147,19 @@ function Page(props: { apiKey: string }) {
           <p>
             Status: {status} · You: {role} · Agent: {agent}
           </p>
+          {pending.map((a) => (
+            <div
+              key={a.id}
+              role="alertdialog"
+              style={{ border: "2px solid #c80", padding: "0.5rem", margin: "0.5rem 0" }}
+            >
+              <strong>Confirm: {a.summary}</strong>
+              <div>
+                <button onClick={() => void approve(a.id)}>Yes, do it</button>{" "}
+                <button onClick={() => void decline(a.id)}>Cancel</button>
+              </div>
+            </div>
+          ))}
           {consent.needed && consent.text && (
             <p style={{ background: "#e0f2fe", padding: 8 }}>
               {consent.text} <button onClick={() => void consent.accept()}>I agree</button>

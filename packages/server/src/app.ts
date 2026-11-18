@@ -9,14 +9,32 @@ import {
   apiKeyId,
   DATA_TERMS,
   isProvider,
+  PROVIDERS,
   resolveRoomKeys,
   type KeyStore,
   type KeyTier,
   type ProductKeyConfig,
   type ProviderKeys,
 } from "./keys.js";
+import { vendorKeyChecker, type KeyChecker } from "./keycheck.js";
 import { callbackPage, McpOAuthError, type McpOAuthService } from "./mcp-oauth.js";
 import { RateLimiter } from "./ratelimit.js";
+import {
+  applyPatch,
+  ConfirmationSigner,
+  describePatch,
+  GEMINI_KEY_URL,
+  llmLabel,
+  llmUsable,
+  LLM_NAMES,
+  parsePatch,
+  resolveLanguage,
+  resolveModel,
+  type SettingLevels,
+  type SettingsLevel,
+  type SettingsPatch,
+} from "./settings.js";
+import { settingsMcpApp, type ToolOutcome } from "./settings-mcp.js";
 import type { TrialService } from "./trial.js";
 import { UsageService, type UsageReport } from "./usage.js";
 import type {
@@ -64,6 +82,10 @@ export interface AppDeps {
   processors?: string;
   /** LiveKit URL returned to joining guests. */
   livekitUrl?: string;
+  /** The server-default level of the model setting (lowest precedence). */
+  serverSettings?: SettingsLevel;
+  /** Checks a key with its vendor. Default: a free "list models" call; mocked in tests. */
+  keyChecker?: KeyChecker;
   /** Limits for the public invite endpoints. */
   joinRateLimit?: { max: number; windowMs: number };
 }
@@ -72,6 +94,15 @@ export const DEFAULT_INVITE_BASE_URL = "https://openblah.web.app/j";
 const DEFAULT_INVITE_TTL = 24 * 60 * 60;
 const MAX_INVITE_TTL = 30 * 24 * 60 * 60;
 const MAX_INVITE_USES = 100;
+
+export const ONBOARDING_INTRO =
+  "Pick the model that powers your agent. Gemini is the quickest way to start: Google gives a free key, and you can also try it for a few minutes first.";
+export const ONBOARDING_COPY = {
+  gemini:
+    "Free to start. Get a free key from Google, or try the free trial. The free tier may use your audio and text to improve Google models, so do not use it for private data.",
+  openai: "Bring your own OpenAI key. Usage is billed to your OpenAI account.",
+  claude: "Bring your own Anthropic key. Usage is billed to your Anthropic account.",
+} as const;
 
 const sha256 = (v: string) => createHash("sha256").update(v).digest("hex");
 
@@ -119,8 +150,26 @@ function publicRoom(room: Room): Omit<Room, "mcp" | "productKeyId"> {
 }
 
 /** Job metadata for the agent: the public room metadata plus private MCP config (tokens). */
-export function dispatchMetadataJson(room: Room): string {
-  return JSON.stringify({ ...JSON.parse(roomMetadataJson(room)), mcp: room.mcp });
+export function dispatchMetadataJson(room: Room, extra: object = {}): string {
+  return JSON.stringify({ ...JSON.parse(roomMetadataJson(room)), mcp: room.mcp, ...extra });
+}
+
+/** Data topic on which the server forwards approval decisions to the agent. */
+export const APPROVAL_DECISION_TOPIC = "openblah.approval.decision";
+
+/** Who owns tool credentials in a room: the host and each tool's `ownerId`. */
+function toolOwners(room: Room): Set<string> {
+  const owner = room.mcp?.ownerId;
+  const out = new Set<string>([typeof owner === "string" ? owner : room.hostUserId]);
+  for (const key of ["servers", "webhookTools"]) {
+    const list = room.mcp?.[key];
+    if (!Array.isArray(list)) continue;
+    for (const item of list) {
+      const o = (item as { ownerId?: unknown } | null)?.ownerId;
+      if (typeof o === "string") out.add(o);
+    }
+  }
+  return out;
 }
 
 export function createApp(deps: AppDeps): Hono {
@@ -170,8 +219,8 @@ export function createApp(deps: AppDeps): Hono {
   const ipLimiter = new RateLimiter(rl.max, rl.windowMs);
   const tokenLimiter = new RateLimiter(rl.max * 2, rl.windowMs);
   /** Job metadata for the agent, with each person's saved MCP servers merged in (no tokens). */
-  const dispatchMetadata = async (room: Room): Promise<string> => {
-    if (!deps.mcpOAuth) return dispatchMetadataJson(room);
+  const dispatchMetadata = async (room: Room, extra: object = {}): Promise<string> => {
+    if (!deps.mcpOAuth) return dispatchMetadataJson(room, extra);
     const owners = new Set([room.hostUserId]);
     for (const p of await storage.listParticipants(room.id)) {
       if (!p.removedAt && p.role !== "guest") owners.add(p.userId);
@@ -189,15 +238,108 @@ export function createApp(deps: AppDeps): Hono {
         servers.push({ id: conn.id, url: conn.serverUrl, ownerId, connectionId: conn.id });
       }
     }
-    if (servers.length === 0) return dispatchMetadataJson(room);
-    return dispatchMetadataJson({
-      ...room,
-      mcp: { ownerId: room.hostUserId, ...room.mcp, servers },
-    });
+    if (servers.length === 0) return dispatchMetadataJson(room, extra);
+    return dispatchMetadataJson(
+      { ...room, mcp: { ownerId: room.hostUserId, ...room.mcp, servers } },
+      extra,
+    );
   };
   const consentText = (room: Room) => renderConsentText(room.agentName, deps.processors);
 
   app.get("/health", (c) => c.json({ ok: true }));
+
+  // ---- Settings: model at three levels, language, agent name (T17) ----
+
+  const keyUsability = {
+    keyModesConfigured,
+    keyStore: deps.keyStore ?? null,
+    productKeys: deps.productKeys ?? {},
+    trialConfigured: !!deps.trial,
+  };
+  const checkKey = deps.keyChecker ?? vendorKeyChecker();
+  const signer = new ConfirmationSigner(deps.agentSecret ?? randomBytes(32).toString("hex"));
+  const keyIdOf = (c: Context) =>
+    apiKeyId(/^Bearer (.+)$/i.exec(c.req.header("authorization") ?? "")?.[1] ?? "");
+
+  const levelsFor = async (o: {
+    room?: Room;
+    userId?: string;
+    productKeyId?: string;
+  }): Promise<SettingLevels> => ({
+    room: o.room?.settings ?? null,
+    user: o.userId ? await storage.getSettings(`user:${o.userId}`) : null,
+    product: o.productKeyId ? await storage.getSettings(`product:${o.productKeyId}`) : null,
+    server: deps.serverSettings ?? null,
+  });
+
+  /** The effective settings plus each level, for settings screens and the agent. */
+  const settingsView = async (o: { room?: Room; userId?: string; productKeyId?: string }) => {
+    const levels = await levelsFor(o);
+    const { choice, source } = resolveModel(levels);
+    const usable = await llmUsable(keyUsability, choice.provider, {
+      ownerId: o.userId,
+      productKeyId: o.productKeyId,
+    });
+    return {
+      llm: choice,
+      source,
+      usable: usable.ok,
+      ...(usable.ok ? { keyMode: usable.mode } : { problem: usable.message }),
+      language: resolveLanguage(levels) ?? "auto",
+      ...(o.room ? { agentName: o.room.agentName } : {}),
+      levels: {
+        ...(o.room ? { room: levels.room ?? null } : {}),
+        user: levels.user ?? null,
+        product: levels.product ?? null,
+        server: levels.server ?? null,
+      },
+    };
+  };
+
+  /** What the agent worker gets in its job metadata: the settings already resolved. */
+  const settingsForAgent = async (room: Room) => {
+    const levels = await levelsFor({
+      room,
+      userId: room.hostUserId,
+      productKeyId: room.productKeyId,
+    });
+    const hasModel = !!(
+      levels.room?.llm ??
+      levels.user?.llm ??
+      levels.product?.llm ??
+      levels.server?.llm
+    );
+    const language = resolveLanguage(levels);
+    return {
+      ...(hasModel ? { providers: { llm: resolveModel(levels).choice } } : {}),
+      ...(language ? { language } : {}),
+    };
+  };
+
+  type Applied =
+    { ok: true; room: Room } | { ok: false; status: 400 | 409; error: string; code?: string };
+
+  /** Check the chosen provider has a usable key, then save the change on the room. */
+  const applyRoomPatch = async (room: Room, patch: SettingsPatch): Promise<Applied> => {
+    if (patch.llm) {
+      const u = await llmUsable(keyUsability, patch.llm.provider, {
+        ownerId: room.hostUserId,
+        productKeyId: room.productKeyId,
+      });
+      if (!u.ok) return { ok: false, status: 409, error: u.message, code: u.code };
+    }
+    const updated: Room = {
+      ...room,
+      ...(patch.agentName ? { agentName: patch.agentName } : {}),
+      settings: applyPatch(room.settings, patch),
+    };
+    await storage.updateRoom(updated);
+    if (patch.agentName) await livekit.updateRoomMetadata(room.id, roomMetadataJson(updated));
+    return { ok: true, room: updated };
+  };
+
+  const fail = (c: Context, r: { status: 400 | 409; error: string; code?: string }) =>
+    c.json({ error: r.error, ...(r.code ? { code: r.code } : {}) }, r.status);
 
   const v1 = new Hono();
   v1.use("*", apiKeyAuth(deps.apiKeys));
@@ -506,12 +648,190 @@ export function createApp(deps: AppDeps): Hono {
     return c.json(updated);
   });
 
-  // Stub until T13 (write-action confirmation) adds real pending actions.
-  v1.post("/rooms/:id/approvals/:approvalId", async (c) => {
-    const body = (await readBody(c)) ?? {};
+  // ---- Settings endpoints ----
+
+  v1.get("/rooms/:id/settings", async (c) => {
+    const room = await loadRoom(c);
+    if (room instanceof Response) return room;
+    const role = await roleOf(c, room, str(c.req.query("viewerUserId"), MAX_ID));
+    if (role instanceof Response) return role;
+    return c.json(
+      await settingsView({ room, userId: room.hostUserId, productKeyId: room.productKeyId }),
+    );
+  });
+
+  v1.put("/rooms/:id/settings", async (c) => {
+    const body = await readBody(c);
+    if (!body) return c.json({ error: "invalid JSON body" }, 400);
     const room = await hostRoom(c, body);
     if (room instanceof Response) return room;
-    return c.json({ error: "tool approvals are not implemented yet" }, 501);
+    const parsed = parsePatch(body.settings ?? {}, { roomLevel: true });
+    if (!parsed.ok) return c.json({ error: parsed.error }, 400);
+    const r = await applyRoomPatch(room, parsed.patch);
+    if (!r.ok) return fail(c, r);
+    return c.json(
+      await settingsView({
+        room: r.room,
+        userId: r.room.hostUserId,
+        productKeyId: r.room.productKeyId,
+      }),
+    );
+  });
+
+  // Product level: the default for every user of this API key.
+  v1.get("/product/settings", async (c) =>
+    c.json(await settingsView({ productKeyId: keyIdOf(c) })),
+  );
+  v1.put("/product/settings", async (c) => {
+    const body = await readBody(c);
+    if (!body) return c.json({ error: "invalid JSON body" }, 400);
+    const parsed = parsePatch(body.settings ?? {}, { roomLevel: false });
+    if (!parsed.ok) return c.json({ error: parsed.error }, 400);
+    const pid = keyIdOf(c);
+    if (parsed.patch.llm) {
+      const u = await llmUsable(keyUsability, parsed.patch.llm.provider, { productKeyId: pid });
+      if (!u.ok) return c.json({ error: u.message, code: u.code }, 409);
+    }
+    await storage.putSettings(
+      `product:${pid}`,
+      applyPatch(await storage.getSettings(`product:${pid}`), parsed.patch),
+    );
+    return c.json(await settingsView({ productKeyId: pid }));
+  });
+
+  // The settings MCP server. The agent worker or a host backend may call it; both are trusted
+  // to name the acting user. Changes are two steps: propose, then confirm with the token.
+  const asText = (r: unknown): ToolOutcome => ({ text: JSON.stringify(r) });
+  const mcpRoom = async (
+    roomId: string,
+    actor: string,
+  ): Promise<{ error: string } | { room: Room; isHost: boolean }> => {
+    const room = await storage.getRoom(roomId);
+    if (!room) return { error: "room not found" };
+    if (room.endedAt) return { error: "room has ended" };
+    const isHost = actor === room.hostUserId;
+    const p = isHost ? null : await storage.getParticipant(room.id, actor);
+    if (!isHost && (!p || p.removedAt)) return { error: "not a participant of this room" };
+    return { room, isHost };
+  };
+  const settingsOps = {
+    async get({ roomId, actorUserId }: { roomId: string; actorUserId: string }) {
+      const r = await mcpRoom(roomId, actorUserId);
+      if ("error" in r) return { text: r.error, isError: true };
+      return asText(
+        await settingsView({
+          room: r.room,
+          userId: r.room.hostUserId,
+          productKeyId: r.room.productKeyId,
+        }),
+      );
+    },
+    async propose({
+      roomId,
+      actorUserId,
+      change,
+    }: {
+      roomId: string;
+      actorUserId: string;
+      change: Record<string, unknown>;
+    }) {
+      const r = await mcpRoom(roomId, actorUserId);
+      if ("error" in r) return { text: r.error, isError: true };
+      if (!r.isHost) return { text: "only the host can change settings", isError: true };
+      const parsed = parsePatch(change, { roomLevel: true });
+      if (!parsed.ok) return { text: parsed.error, isError: true };
+      if (parsed.patch.llm) {
+        const u = await llmUsable(keyUsability, parsed.patch.llm.provider, {
+          ownerId: r.room.hostUserId,
+          productKeyId: r.room.productKeyId,
+        });
+        if (!u.ok) return { text: u.message, isError: true };
+      }
+      const { token, expiresAt } = signer.sign(
+        { roomId, actor: actorUserId, patch: parsed.patch },
+        now().getTime(),
+      );
+      const question = `Do you want me to ${describePatch(parsed.patch)}?`;
+      return asText({
+        status: "needs_confirmation",
+        question,
+        confirmationToken: token,
+        expiresAt,
+        note: "Nothing has changed yet. Ask the question out loud and only apply it after a yes.",
+      });
+    },
+    async confirm({
+      roomId,
+      actorUserId,
+      confirmationToken,
+    }: {
+      roomId: string;
+      actorUserId: string;
+      confirmationToken: string;
+    }) {
+      const pending = signer.open(confirmationToken, now().getTime());
+      if (!pending || pending.roomId !== roomId || pending.actor !== actorUserId) {
+        return {
+          text: "that confirmation is not valid or has expired; propose the change again",
+          isError: true,
+        };
+      }
+      const r = await mcpRoom(roomId, actorUserId);
+      if ("error" in r) return { text: r.error, isError: true };
+      if (!r.isHost) return { text: "only the host can change settings", isError: true };
+      const applied = await applyRoomPatch(r.room, pending.patch);
+      if (!applied.ok) return { text: applied.error, isError: true };
+      return asText({
+        status: "changed",
+        changed: describePatch(pending.patch),
+        note: pending.patch.llm
+          ? "A model change applies the next time the agent joins the call."
+          : undefined,
+      });
+    },
+  };
+  const mcp = new Hono();
+  mcp.use("*", async (c, next) => {
+    const m = /^Bearer (.+)$/i.exec(c.req.header("authorization") ?? "");
+    const token = m?.[1] ?? "";
+    const ok =
+      isValidApiKey(token, deps.apiKeys) ||
+      (!!deps.agentSecret && isValidApiKey(token, [deps.agentSecret]));
+    if (!ok) return c.json({ error: "unauthorized" }, 401);
+    await next();
+  });
+  mcp.route("/", settingsMcpApp(settingsOps));
+  app.route("/mcp/settings", mcp);
+
+  /**
+   * Tapped or app-side approval of a write action the agent is waiting on.
+   * Only the owner of the tool credentials may approve: the host, or a member
+   * named as `ownerId` of one of the room's MCP servers. The server forwards the
+   * decision to the agent, which checks it again against the pending action.
+   */
+  v1.post("/rooms/:id/approvals/:approvalId", async (c) => {
+    const body = await readBody(c);
+    if (!body) return c.json({ error: "invalid JSON body" }, 400);
+    const room = await loadRoom(c);
+    if (room instanceof Response) return room;
+    if (room.endedAt) return c.json({ error: "room has ended" }, 409);
+    const actor = actorOf(c, body);
+    const role = await roleOf(c, room, actor);
+    if (role instanceof Response) return role;
+    if (role === "guest" || !actor || !toolOwners(room).has(actor)) {
+      return c.json({ error: "only the owner of the tool credentials can approve" }, 403);
+    }
+    if (typeof body.approve !== "boolean") {
+      return c.json({ error: "approve must be a boolean" }, 400);
+    }
+    const approvalId = str(c.req.param("approvalId"), MAX_ID);
+    if (!approvalId) return c.json({ error: "approvalId is required" }, 400);
+    await livekit.sendData(
+      room.id,
+      APPROVAL_DECISION_TOPIC,
+      JSON.stringify({ approvalId, approve: body.approve, actorUserId: actor }),
+    );
+    return c.json({ approvalId, approve: body.approve, forwarded: true }, 202);
   });
 
   // ---- Consent ----
@@ -586,7 +906,10 @@ export function createApp(deps: AppDeps): Hono {
         409,
       );
     }
-    await livekit.dispatchAgent(room.id, roomMetadataJson(room));
+    await livekit.dispatchAgent(
+      room.id,
+      await dispatchMetadata(room, await settingsForAgent(room)),
+    );
     return c.json({ dispatched: true });
   });
 
@@ -722,7 +1045,7 @@ export function createApp(deps: AppDeps): Hono {
     await worker.wake().catch(() => false);
     const { dispatchId, created } = await livekit.dispatchAgent(
       room.id,
-      await dispatchMetadata(room),
+      await dispatchMetadata(room, await settingsForAgent(room)),
     );
     return c.json({ roomId: room.id, dispatchId, created }, created ? 201 : 200);
   });
@@ -786,6 +1109,92 @@ export function createApp(deps: AppDeps): Hono {
       const store = needStore();
       if (!store) return c.json({ error: "key storage is not configured" }, 501);
       return c.json({ keys: await store.list(ownerOf(c)) });
+    });
+
+    r.get("/settings", async (c) => {
+      const userId = ownerOf(c);
+      return c.json(await settingsView({ userId, productKeyId: keyIdOf(c) }));
+    });
+    r.put("/settings", async (c) => {
+      const body = await readBody(c);
+      if (!body) return c.json({ error: "invalid JSON body" }, 400);
+      const parsed = parsePatch(body.settings ?? body, { roomLevel: false });
+      if (!parsed.ok) return c.json({ error: parsed.error }, 400);
+      const userId = ownerOf(c);
+      if (parsed.patch.llm) {
+        const u = await llmUsable(keyUsability, parsed.patch.llm.provider, {
+          ownerId: userId,
+          productKeyId: keyIdOf(c),
+        });
+        if (!u.ok) return c.json({ error: u.message, code: u.code }, 409);
+      }
+      await storage.putSettings(
+        `user:${userId}`,
+        applyPatch(await storage.getSettings(`user:${userId}`), parsed.patch),
+      );
+      return c.json(await settingsView({ userId, productKeyId: keyIdOf(c) }));
+    });
+    // Onboarding: which providers, what each needs, and where the user stands.
+    r.get("/onboarding", async (c) => {
+      const userId = ownerOf(c);
+      const pid = keyIdOf(c);
+      const saved = new Set(
+        (await (deps.keyStore?.list(userId) ?? Promise.resolve([]))).map((k) => k.provider),
+      );
+      const providers = await Promise.all(
+        LLM_NAMES.map(async (id) => {
+          const u = await llmUsable(keyUsability, id, { ownerId: userId, productKeyId: pid });
+          return {
+            id,
+            label: llmLabel(id),
+            recommended: id === "gemini",
+            hasKey: saved.has(id),
+            // Keys still to add to use this model with your own keys (speech keys are needed too).
+            missingKeys: [...PROVIDERS, id].filter((p) => !saved.has(p)),
+            usable: u.ok,
+            ...(u.ok ? { keyMode: u.mode } : {}),
+            copy: ONBOARDING_COPY[id],
+            ...(id === "gemini" ? { keyUrl: GEMINI_KEY_URL } : {}),
+          };
+        }),
+      );
+      const trial =
+        deps.trial && (await storage.getUser(userId))
+          ? await deps.trial.service.status(userId, deviceOf(c))
+          : null;
+      return c.json({
+        intro: ONBOARDING_INTRO,
+        providers,
+        trial,
+        trialAvailable: !!deps.trial,
+        dataTerms: DATA_TERMS,
+        current: await settingsView({ userId, productKeyId: pid }),
+      });
+    });
+    // Check a key with its vendor before saving it. The key is not stored or logged.
+    r.post("/keys/:provider/check", async (c) => {
+      const provider = c.req.param("provider");
+      if (!isProvider(provider)) return c.json({ error: "unknown provider" }, 400);
+      const body = await readBody(c);
+      const secret = body ? str(body.key, 500) : null;
+      if (!secret) return c.json({ error: "key is a required string" }, 400);
+      return c.json({ provider, ...(await checkKey(provider, secret)) });
+    });
+    // Start the free trial: choose Gemini for this user when they have no model yet.
+    r.post("/trial/start", async (c) => {
+      const user = ownerOf(c);
+      if (!deps.trial) return c.json({ error: "trial is not configured" }, 501);
+      if (!(await storage.getUser(user))) return c.json({ error: "sign in required" }, 401);
+      const status = await deps.trial.service.status(user, deviceOf(c));
+      if (!status.available) return c.json({ error: "the free trial is used up", status }, 402);
+      const existing = await storage.getSettings(`user:${user}`);
+      if (!existing?.llm) {
+        await storage.putSettings(
+          `user:${user}`,
+          applyPatch(existing, { llm: { provider: "gemini" } }),
+        );
+      }
+      return c.json({ started: true, status });
     });
     r.get("/trial", async (c) => {
       const user = ownerOf(c);
