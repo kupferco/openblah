@@ -228,6 +228,15 @@
                   s.agent = s.agent === "off" ? "listening" : "off";
                   render();
                 },
+                invite: () => {
+                  const url = "openblah.example/j/abc123";
+                  if (navigator.share)
+                    navigator.share({ title: "Join my call", url }).catch(() => {});
+                  else {
+                    navigator.clipboard?.writeText(url).catch(() => {});
+                    OB.toast("Invite link copied");
+                  }
+                },
                 leave: () => {
                   s.screen = "home";
                   render();
@@ -407,7 +416,7 @@
               ),
             );
         }
-        body.push(tabs());
+        if (s.screen !== "call") body.push(tabs()); // full screen during a call
         if (s.sheet) body.push(sheet());
         phone.replaceChildren(...body);
       }

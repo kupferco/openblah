@@ -74,6 +74,13 @@
     return { redraw: draw };
   }
 
+  /* Small message at the top of the screen, gone after ms (default 3 s). */
+  function toast(text, ms) {
+    const el = h("div", { class: "toast", role: "status" }, text);
+    document.body.append(el);
+    setTimeout(() => el.remove(), ms || 3000);
+  }
+
   /* Fake mic level meter; returns stop(). */
   function meter(el, active) {
     const bars = Array.from({ length: 20 }, () => h("i"));
@@ -179,6 +186,14 @@
           s.agent === "off" ? "▶" : "⏸",
           h("small", {}, s.agent === "off" ? "Bring AI in" : "Pause AI"),
         ),
+        actions.invite
+          ? h(
+              "button",
+              { class: "ctl", onclick: actions.invite, "aria-label": "Invite" },
+              "➕",
+              h("small", {}, "Invite"),
+            )
+          : "",
         h(
           "button",
           { class: "ctl leave", onclick: actions.leave, "aria-label": "Leave" },
@@ -280,5 +295,5 @@
         : h("div", { class: "notice warn" }, "No notes: the AI was off for this call."),
     );
   }
-  window.OB = { $, h, CONSENT, PEOPLE, CALLS, chrome, meter, callView, callDetail };
+  window.OB = { $, h, CONSENT, PEOPLE, CALLS, chrome, meter, toast, callView, callDetail };
 })();

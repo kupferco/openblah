@@ -141,33 +141,9 @@
         ),
       ];
     } else {
-      body = [
-        h("div", { style: "height:40px" }),
-        h(
-          "div",
-          { class: "agent listening", style: "align-self:center" },
-          h("div", { class: "orb" }, h("span", { class: "core" }, "✦")),
-        ),
-        h("h1", { style: "text-align:center" }, "You're in, " + (form.name.trim() || "guest")),
-        h(
-          "p",
-          { class: "dim", style: "text-align:center" },
-          needConsent ? "Blah is here and listening." : "Joining Maria and Tom…",
-        ),
-        h("div", { class: "spacer" }),
-        h("a", { class: "btn primary block", href: "../call/index.html" }, "Open the call screen"),
-        h(
-          "button",
-          {
-            class: "btn block",
-            onclick: () => {
-              s.step = "name";
-              render();
-            },
-          },
-          "Start over",
-        ),
-      ];
+      // joined: straight to the call screen, which shows "You're in" as a toast
+      location.href = "../call/index.html?joined=1";
+      return;
     }
     host.replaceChildren(h("div", { class: "screen" }, body));
   }

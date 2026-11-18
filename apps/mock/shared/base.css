@@ -305,3 +305,18 @@ p {
   flex-direction: column;
   gap: var(--ob-s3);
 }
+
+.toast {
+  position: fixed;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  background: var(--ob-surface-2);
+  color: var(--ob-text);
+  border: 1px solid var(--ob-border);
+  border-radius: var(--ob-r-pill);
+  padding: var(--ob-s3) var(--ob-s5);
+  font-weight: 700;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}

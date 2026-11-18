@@ -34,6 +34,7 @@
         speaker: 1,
         left: false,
         history: false,
+        signedIn: false,
       };
       const host = document.getElementById("host");
       function render() {
@@ -46,7 +47,9 @@
           d.style.padding = "0";
           host.replaceChildren(
             d,
-            h("p", { class: "small dim" }, "Opened with your invite link. No account needed."),
+            s.signedIn
+              ? ""
+              : h("p", { class: "small dim" }, "Opened with your invite link. No account needed."),
           );
           return;
         }
@@ -82,11 +85,13 @@
                 },
                 "View call history",
               ),
-              h(
-                "a",
-                { href: "../app/index.html", class: "small" },
-                "Keep your calls: create a free account",
-              ),
+              s.signedIn
+                ? ""
+                : h(
+                    "a",
+                    { href: "../app/index.html", class: "small" },
+                    "Keep your calls: create a free account",
+                  ),
             ),
           );
           return;
@@ -141,6 +146,14 @@
             ],
           },
           {
+            key: "signedIn",
+            label: "Account",
+            options: [
+              [false, "Guest"],
+              [true, "Signed in"],
+            ],
+          },
+          {
             key: "selfMuted",
             label: "You",
             options: [
@@ -153,6 +166,7 @@
         render,
       );
       render();
+      if (new URLSearchParams(location.search).has("joined")) OB.toast("You're in");
     </script>
   </body>
 </html>

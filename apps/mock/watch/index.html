@@ -43,6 +43,24 @@
         font-size: 11px;
         padding: 0 2px;
       }
+      .wbtn.live {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .wbtn .rname {
+        flex: 1;
+      }
+      .wbtn .ldot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--ob-speaking);
+      }
+      .wbtn .rjoin {
+        color: var(--ob-speaking);
+        font-size: 12px;
+      }
       .band.b {
         margin-top: -8px;
       }
@@ -144,8 +162,22 @@
     <script src="../shared/mock.js"></script>
     <script>
       const { h, chrome } = OB;
-      const s = { screen: "idle", agent: "listening", muted: false };
+      const s = { screen: "idle", agent: "listening", muted: false, invites: false };
       const w = document.getElementById("w");
+      // [room, has a live call]
+      const ROOMS = [
+        ["Family chat", true],
+        ["Project sync", false],
+        ["Just us", false],
+      ];
+      // live calls first, then invites. In the "Invites" state there is a second choice.
+      const pickList = () => [
+        ...ROOMS.filter((r) => r[1]).map((r) => r[0]),
+        ...(s.invites ? ["Invite from Tom"] : []),
+      ];
+      function joinTop() {
+        go(pickList().length > 1 ? "pick" : "call");
+      }
       function go(screen) {
         s.screen = screen;
         render();
@@ -153,18 +185,35 @@
       }
       function render() {
         let b;
-        if (s.screen === "idle")
+        if (s.screen === "pick")
           b = [
-            h("b", {}, "OpenBlah"),
-            h("span", { class: "wcap" }, "Family chat is live · Mum, Maria"),
-            h("button", { class: "wbtn go", onclick: () => go("call") }, "Join"),
-            h("button", { class: "wbtn", onclick: () => go("call") }, "Start a call"),
-            h("span", { class: "wcap" }, "Start in a room"),
+            h("b", {}, "Join a call"),
             h(
               "div",
               { class: "wlist" },
-              ["Family chat", "Project sync", "Just us"].map((r) =>
-                h("button", { class: "wbtn", onclick: () => go("call") }, r),
+              pickList().map((r) =>
+                h("button", { class: "wbtn go", onclick: () => go("call") }, r),
+              ),
+              h("button", { class: "wbtn", onclick: () => go("idle") }, "Back"),
+            ),
+          ];
+        else if (s.screen === "idle")
+          b = [
+            h("b", {}, "OpenBlah"),
+            h("button", { class: "wbtn go", onclick: joinTop }, "Join"),
+            h("button", { class: "wbtn", onclick: () => go("call") }, "Quick call"),
+            h("span", { class: "wcap" }, "Your rooms"),
+            h(
+              "div",
+              { class: "wlist" },
+              ROOMS.map(([r, live]) =>
+                h(
+                  "button",
+                  { class: "wbtn" + (live ? " live" : ""), onclick: () => go("call") },
+                  live ? h("span", { class: "ldot" }) : "",
+                  h("span", { class: "rname" }, r),
+                  live ? h("span", { class: "rjoin" }, "Join") : "",
+                ),
               ),
             ),
           ];
@@ -237,7 +286,13 @@
               "Done",
             ),
           ];
-        w.replaceChildren(h("div", { class: "wscreen" + (s.screen === "idle" ? " top" : "") }, b));
+        w.replaceChildren(
+          h(
+            "div",
+            { class: "wscreen" + (s.screen === "idle" || s.screen === "pick" ? " top" : "") },
+            b,
+          ),
+        );
       }
       const ui = chrome(
         "Apple Watch",
@@ -247,8 +302,17 @@
             label: "Screen",
             options: [
               ["idle", "Home"],
+              ["pick", "Pick a call"],
               ["call", "In call"],
               ["ended", "Ended"],
+            ],
+          },
+          {
+            key: "invites",
+            label: "Invites",
+            options: [
+              [false, "None (one live call)"],
+              [true, "Invite waiting"],
             ],
           },
           {
