@@ -226,4 +226,5 @@ export function useInviteRequests(
   );
 }
 
+export { useHistory, useCall, type UseHistoryOptions, type UseCallOptions } from "./history.js";
 export { useOnboarding, type UseOnboardingOptions } from "./onboarding.js";

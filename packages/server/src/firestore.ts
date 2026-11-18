@@ -4,6 +4,7 @@ import type { UserRecord } from "./accounts.js";
 import type { KeyProvider, StoredKey } from "./keys.js";
 import type { SettingsLevel } from "./settings.js";
 import type { McpConnectionRecord } from "./mcp-oauth.js";
+import type { CallHistory } from "./history.js";
 import type { CallSummary, ConsentRecord, Invite, Participant, Room, Storage } from "./types.js";
 
 /** Firestore ids cannot hold arbitrary user ids, so hash the pair. */
@@ -187,6 +188,47 @@ export class FirestoreStorage implements Storage {
   async getSummary(roomId: string): Promise<CallSummary | null> {
     const snap = await this.db.collection("summaries").doc(roomId).get();
     return snap.exists ? (snap.data() as CallSummary) : null;
+  }
+
+  async deleteSummary(roomId: string): Promise<void> {
+    await this.db.collection("summaries").doc(roomId).delete();
+  }
+
+  async saveHistory(history: CallHistory): Promise<void> {
+    await this.db.collection("histories").doc(history.roomId).set(clean(history));
+  }
+
+  async getHistory(roomId: string): Promise<CallHistory | null> {
+    const snap = await this.db.collection("histories").doc(roomId).get();
+    return snap.exists ? (snap.data() as CallHistory) : null;
+  }
+
+  async listHistories(roomIds: string[]): Promise<CallHistory[]> {
+    const refs = roomIds.map((id) => this.db.collection("histories").doc(id));
+    if (refs.length === 0) return [];
+    const snaps = await this.db.getAll(...refs);
+    return snaps.filter((s) => s.exists).map((s) => s.data() as CallHistory);
+  }
+
+  async listAllHistories(): Promise<CallHistory[]> {
+    const snap = await this.db.collection("histories").get();
+    return snap.docs.map((d) => d.data() as CallHistory);
+  }
+
+  async deleteHistory(roomId: string): Promise<void> {
+    await this.db.collection("histories").doc(roomId).delete();
+  }
+
+  async listRoomIdsForUser(userId: string): Promise<string[]> {
+    const ids = new Set<string>();
+    const hosted = await this.db.collection("rooms").where("hostUserId", "==", userId).get();
+    for (const d of hosted.docs) ids.add(d.id);
+    const parts = await this.db.collection("participants").where("userId", "==", userId).get();
+    for (const d of parts.docs) {
+      const p = d.data() as Participant;
+      if (p.role !== "guest") ids.add(p.roomId);
+    }
+    return [...ids];
   }
 }
 

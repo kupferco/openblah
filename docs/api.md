@@ -79,3 +79,7 @@ Sends the agent into the room. 409 if the room's agent is `off`, or if any curre
 ## Guest rights
 
 Guests cannot invoke tools on host accounts (`canInvokeTools: false`), cannot change agent mode or use any host control (403), and cannot see other participants' contact details. Token grants give guests no admin rights and no metadata updates.
+
+## Call history (T19)
+
+SDK: `useHistory({ api, userId })` lists past calls and `useCall({ api, roomId, userId })` reads one (a guest passes `{ api, inviteToken }` instead). Both live in `@openblah/web/react` and `@openblah/react-native`'s React exports. `OpenBlahApi` has `listCalls`, `getCall`, `deleteCall`, `updateHistorySettings` and `getCallWithInvite`. Server endpoints, retention and the cleanup job are in [deploy.md](deploy.md); the privacy side is in the README.

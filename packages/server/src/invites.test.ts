@@ -231,9 +231,10 @@ describe("invites", () => {
 });
 
 describe("consent", () => {
-  it("text includes agent name and processors placeholder", () => {
+  it("text includes agent name and processors list", () => {
     expect(renderConsentText("Zed")).toContain("Zed");
-    expect(renderConsentText("Zed")).toContain("processors");
+    expect(renderConsentText("Zed")).toContain("LiveKit");
+    expect(renderConsentText("Zed")).not.toContain("filled in T19");
     expect(renderConsentText("Zed", "A, B")).toContain("A, B");
   });
 
