@@ -4,7 +4,6 @@
   "installCommand": "npm install",
   "buildCommand": "sh build-vercel.sh",
   "outputDirectory": "dist",
-  "cleanUrls": true,
   "headers": [
     {
       "source": "/assets/(.*)",
