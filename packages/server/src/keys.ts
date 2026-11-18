@@ -4,14 +4,18 @@ import type { Room, Storage } from "./types.js";
 
 export const PROVIDERS = ["gemini", "deepgram", "cartesia"] as const;
 export type Provider = (typeof PROVIDERS)[number];
+/** Optional extra LLM keys: a user may bring OpenAI or Anthropic to pick them as the model (T17). */
+export const EXTRA_KEY_PROVIDERS = ["openai", "claude"] as const;
+export type ExtraKeyProvider = (typeof EXTRA_KEY_PROVIDERS)[number];
+export type KeyProvider = Provider | ExtraKeyProvider;
 export type KeyTier = "free" | "paid";
 export type KeyMode = "product" | "byok" | "trial";
-export type ProviderKeys = Record<Provider, string>;
+export type ProviderKeys = Record<Provider, string> & Partial<Record<ExtraKeyProvider, string>>;
 
 /** A saved BYOK key. The secret is only inside `sealed`. */
 export interface StoredKey extends Sealed {
   ownerId: string;
-  provider: Provider;
+  provider: KeyProvider;
   tier: KeyTier;
   /** The owner confirmed "paid tier, no training" (needed for sensitive rooms). */
   noTrainingConfirmed: boolean;
@@ -20,7 +24,7 @@ export interface StoredKey extends Sealed {
 
 /** What may be shown about a saved key: never the key itself. */
 export interface KeyInfo {
-  provider: Provider;
+  provider: KeyProvider;
   tier: KeyTier;
   noTrainingConfirmed: boolean;
   createdAt: string;
@@ -37,8 +41,12 @@ export type Resolution =
       message: string;
     };
 
-export function isProvider(v: unknown): v is Provider {
-  return typeof v === "string" && (PROVIDERS as readonly string[]).includes(v);
+export function isProvider(v: unknown): v is KeyProvider {
+  return (
+    typeof v === "string" &&
+    ((PROVIDERS as readonly string[]).includes(v) ||
+      (EXTRA_KEY_PROVIDERS as readonly string[]).includes(v))
+  );
 }
 
 /** Short stable id for an API key, so raw keys are never stored on rooms. */
@@ -46,7 +54,7 @@ export function apiKeyId(apiKey: string): string {
   return createHash("sha256").update(apiKey).digest("hex").slice(0, 16);
 }
 
-const aad = (ownerId: string, provider: Provider) => `${ownerId}|${provider}`;
+const aad = (ownerId: string, provider: KeyProvider) => `${ownerId}|${provider}`;
 
 export function keyInfo(k: StoredKey): KeyInfo {
   return {
@@ -67,7 +75,7 @@ export class KeyStore {
 
   async save(
     ownerId: string,
-    provider: Provider,
+    provider: KeyProvider,
     secret: string,
     tier: KeyTier,
     noTrainingConfirmed: boolean,
@@ -84,7 +92,7 @@ export class KeyStore {
     return keyInfo(stored);
   }
 
-  delete(ownerId: string, provider: Provider): Promise<boolean> {
+  delete(ownerId: string, provider: KeyProvider): Promise<boolean> {
     return this.storage.deleteKey(ownerId, provider);
   }
 
@@ -95,7 +103,7 @@ export class KeyStore {
   /** All providers for an owner, or null if any is missing. Server-side use only. */
   async openAll(ownerId: string): Promise<{ keys: ProviderKeys; stored: StoredKey[] } | null> {
     const stored = await this.storage.listKeys(ownerId);
-    const keys: Partial<ProviderKeys> = {};
+    const keys: Partial<Record<KeyProvider, string>> = {};
     for (const s of stored) keys[s.provider] = this.cipher.open(s, aad(ownerId, s.provider));
     if (!PROVIDERS.every((p) => keys[p])) return null;
     return { keys: keys as ProviderKeys, stored };
@@ -118,7 +126,13 @@ export function parseProductKeys(raw: string | undefined): Record<string, Produc
       throw new Error("product keys need gemini, deepgram and cartesia");
     }
     out[apiKey] = {
-      keys: { gemini: cfg.gemini!, deepgram: cfg.deepgram!, cartesia: cfg.cartesia! },
+      keys: {
+        gemini: cfg.gemini!,
+        deepgram: cfg.deepgram!,
+        cartesia: cfg.cartesia!,
+        ...(cfg.openai ? { openai: cfg.openai } : {}),
+        ...(cfg.claude ? { claude: cfg.claude } : {}),
+      },
       tier: cfg.tier === "free" ? "free" : "paid",
     };
   }

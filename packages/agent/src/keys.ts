@@ -1,9 +1,11 @@
+import type { RoomVendorKeys } from "./providers/index.js";
+
 type Env = Record<string, string | undefined>;
 
 export interface RoomKeys {
   mode: "product" | "byok" | "trial";
   tier: "free" | "paid";
-  keys: { gemini: string; deepgram: string; cartesia: string };
+  keys: RoomVendorKeys;
 }
 
 /**

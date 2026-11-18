@@ -241,3 +241,5 @@ export function useInviteRequests(
     [client],
   );
 }
+
+export { useOnboarding, type UseOnboardingOptions } from "./onboarding.js";
