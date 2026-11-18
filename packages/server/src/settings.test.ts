@@ -33,6 +33,7 @@ function setup(
     deleteRoom: vi.fn(async () => {}),
     sendData: vi.fn(async () => {}),
     removeParticipant: vi.fn(async () => {}),
+    stopAgent: vi.fn(async () => {}),
   };
   const app = createApp({
     storage,

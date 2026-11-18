@@ -62,6 +62,17 @@ export class RealLiveKit implements LiveKitGateway {
     await this.rooms.removeParticipant(roomId, userId);
   }
 
+  async stopAgent(roomId: string): Promise<void> {
+    const name = this.cfg.agentName ?? DEFAULT_AGENT_DISPATCH_NAME;
+    for (const d of await this.dispatches.listDispatch(roomId)) {
+      if (d.agentName === name) await this.dispatches.deleteDispatch(d.id, roomId);
+    }
+    // ParticipantInfo.Kind AGENT = 4: the worker's participant leaves with its job.
+    for (const p of await this.rooms.listParticipants(roomId)) {
+      if (p.kind === 4) await this.rooms.removeParticipant(roomId, p.identity);
+    }
+  }
+
   async sendData(roomId: string, topic: string, payload: string): Promise<void> {
     await this.rooms.sendData(roomId, new TextEncoder().encode(payload), DataPacket_Kind.RELIABLE, {
       topic,

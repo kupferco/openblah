@@ -54,6 +54,46 @@ export interface RoomParticipant {
   contact?: string;
 }
 
+/** A non-host asked for the agent; the host approves or declines it. */
+export interface AgentRequestInfo {
+  id: string;
+  userId: string;
+  displayName: string;
+  requestedAt: string;
+}
+
+/**
+ * The room's agent setting and what is pending. `agent` is `off` (a plain call), `on`, or `ask`
+ * (off until someone invites it).
+ */
+export interface AgentControlState {
+  agent: "on" | "off" | "ask";
+  agentName: string;
+  /** Any participant may bring the agent in or send it out, not only the host. */
+  anyoneCanAddAgent: boolean;
+  /** The agent leaves after this many seconds of silence. */
+  idleTimeoutSeconds: number;
+  /** The agent is on but waits for everyone to consent; it listens to nobody until then. */
+  awaitingConsent: boolean;
+  /** Who has not consented yet (only while awaiting consent). */
+  missing: { userId: string; displayName: string }[];
+  /** Pending requests; only the host sees them. */
+  requests: AgentRequestInfo[];
+  /** True when you may bring the agent in and send it out without asking. */
+  canControl: boolean;
+}
+
+/**
+ * What happened to a request to bring the agent in: it is `on`, `awaiting_consent` (asking
+ * everyone again), `requested` (the host was asked) or `refused` (a cap, key or trial limit).
+ */
+export interface AgentBringInResult {
+  status: "on" | "awaiting_consent" | "requested" | "refused";
+  agent: "on" | "off" | "ask";
+  missing?: { userId: string; displayName: string }[];
+  error?: string;
+}
+
 export interface ConsentStatus extends ConsentText {
   agentName: string;
   /** People in the room who have not consented to the current text. */
@@ -237,6 +277,51 @@ export class OpenBlahApi {
       `/rooms/${enc(roomId)}/participants`,
       { query: { viewerUserId }, auth: true },
     ).then((r) => r.participants);
+  }
+
+  // ---- Optional agent (T18) ----
+
+  getAgentState(roomId: string, actorUserId: string) {
+    return this.call<AgentControlState>("GET", `/rooms/${enc(roomId)}/agent`, {
+      query: { actorUserId },
+      auth: true,
+    });
+  }
+
+  /** Host (or anyone, if the room allows it) brings the agent in; others leave a request. */
+  bringInAgent(roomId: string, actorUserId: string) {
+    return this.call<AgentBringInResult>("POST", `/rooms/${enc(roomId)}/agent/bring-in`, {
+      body: { actorUserId },
+      auth: true,
+    });
+  }
+
+  sendOutAgent(roomId: string, actorUserId: string) {
+    return this.call<{ status: "off"; agent: "on" | "off" | "ask" }>(
+      "POST",
+      `/rooms/${enc(roomId)}/agent/send-out`,
+      { body: { actorUserId }, auth: true },
+    );
+  }
+
+  answerAgentRequest(roomId: string, requestId: string, actorUserId: string, approve: boolean) {
+    return this.call<AgentBringInResult | { status: "declined"; agent: string }>(
+      "POST",
+      `/rooms/${enc(roomId)}/agent/requests/${enc(requestId)}/${approve ? "approve" : "decline"}`,
+      { body: { actorUserId }, auth: true },
+    );
+  }
+
+  /** Host: "anyone can add the agent" and the idle timeout (`null` goes back to the default). */
+  updateAgentSettings(
+    roomId: string,
+    actorUserId: string,
+    settings: { anyoneCanAddAgent?: boolean; idleTimeoutSeconds?: number | null },
+  ) {
+    return this.call<unknown>("PUT", `/rooms/${enc(roomId)}/agent`, {
+      body: { actorUserId, ...settings },
+      auth: true,
+    });
   }
 
   // ---- Consent ----

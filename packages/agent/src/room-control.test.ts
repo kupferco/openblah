@@ -14,6 +14,7 @@ function setup(opts: { host?: string; timeout?: number } = {}) {
     publishPaused: vi.fn<RoomPort["publishPaused"]>(),
     sendTo: vi.fn<RoomPort["sendTo"]>(),
     leave: vi.fn<RoomPort["leave"]>(),
+    agentOff: vi.fn<NonNullable<RoomPort["agentOff"]>>(),
   };
   const control = new RoomControl({
     agentName: "Blah",
@@ -109,6 +110,14 @@ describe("stop listening or leave by voice", () => {
     expect(port.setListening).toHaveBeenCalledWith(false);
     expect(port.say).toHaveBeenCalledWith("Okay, Blah is leaving the call.");
     expect(port.leave).toHaveBeenCalled();
+    // A voice request to leave puts the room back to agent off on the server.
+    expect(port.agentOff).toHaveBeenCalled();
+  });
+
+  it("pausing by voice does not turn the room off", async () => {
+    const { control, port } = setup();
+    await run(control.tools().stop_listening_or_leave, { action: "pause" });
+    expect(port.agentOff).not.toHaveBeenCalled();
   });
 });
 

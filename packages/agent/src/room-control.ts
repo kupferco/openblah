@@ -88,6 +88,8 @@ export interface RoomPort {
   sendTo(identity: string, msg: ControlMessage): void;
   /** Leave the room (after the current speech). */
   leave(): void;
+  /** Tell the server the room is now agent off (a voice request to leave). */
+  agentOff?(): void;
 }
 
 export type InviteOutcome = "sent" | "declined" | "no_host" | "no_answer";
@@ -185,6 +187,7 @@ export class RoomControl {
       this.port?.setListening(false);
       this.port?.publishPaused(true);
       this.port?.say(phrases.leaving(this.opts.agentName, this.lang()));
+      this.port?.agentOff?.();
       this.port?.leave();
     } else {
       // The host can resume with the control; nobody can by voice, as nothing is listening.

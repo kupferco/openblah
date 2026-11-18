@@ -30,6 +30,18 @@ export interface Room {
   /** Lowers the server's idle timeout for this room, in seconds. */
   idleTimeoutSeconds?: number;
 
+  /** Room setting: any participant (not only the host) can bring the agent in or send it out. */
+  anyoneCanAddAgent?: boolean;
+  /**
+   * Set when the agent is brought in (off or ask to on). Consent given before this
+   * time does not count: everyone is asked again (late consent, T18).
+   */
+  agentConsentSince?: string;
+  /** The agent is on but not dispatched yet: waiting for everyone's consent. */
+  agentAwaitingConsent?: boolean;
+  /** Pending "please bring the agent in" requests from non-hosts, for the host to approve. */
+  agentRequests?: AgentRequest[];
+
   /** Host turned "save notes" on: the transcript, notes and summary are kept (T19). Default off. */
   saveNotes?: boolean;
   /** How long saved history is kept (Q4). Default "30d". */
@@ -37,6 +49,14 @@ export interface Room {
 
   /** Set when the host ends the room; no more tokens or invites. */
   endedAt?: string;
+}
+
+/** A non-host asked for the agent; the host approves or declines. */
+export interface AgentRequest {
+  id: string;
+  userId: string;
+  displayName: string;
+  requestedAt: string;
 }
 
 /** Only a hash of the invite token is stored. */
@@ -166,6 +186,11 @@ export interface LiveKitGateway {
   sendData(roomId: string, topic: string, payload: string): Promise<void>;
   /** Mint a short-lived join token. */
   createToken(req: TokenRequest): Promise<string>;
+  /**
+   * Take the agent out of the room: cancel its dispatch and remove its participant.
+   * Idempotent: nothing to do when it is not there.
+   */
+  stopAgent(roomId: string): Promise<void>;
   /**
    * Dispatch the agent worker into the room. Idempotent: if the agent is
    * already dispatched there, no second one is created.
