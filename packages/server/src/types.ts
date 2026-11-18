@@ -161,6 +161,11 @@ export interface LiveKitGateway {
   updateRoomMetadata(roomId: string, metadata: string): Promise<void>;
   deleteRoom(roomId: string): Promise<void>;
   removeParticipant(roomId: string, userId: string): Promise<void>;
+  /**
+   * Send a data message from the server to the agent in the room. The agent
+   * only trusts the tool-approval topic when it comes from the server.
+   */
+  sendData(roomId: string, topic: string, payload: string): Promise<void>;
   /** Mint a short-lived join token. */
   createToken(req: TokenRequest): Promise<string>;
   /**

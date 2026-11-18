@@ -47,6 +47,7 @@ function setup(
     deleteRoom: vi.fn(async () => {}),
     removeParticipant: vi.fn(async () => {}),
     stopAgent: vi.fn(async () => {}),
+    sendData: vi.fn(async () => {}),
   };
   const verifier: TokenVerifier = {
     verify: async (t) =>

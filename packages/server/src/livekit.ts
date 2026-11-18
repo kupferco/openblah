@@ -1,4 +1,9 @@
-import { AccessToken, AgentDispatchClient, RoomServiceClient } from "livekit-server-sdk";
+import {
+  AccessToken,
+  DataPacket_Kind,
+  AgentDispatchClient,
+  RoomServiceClient,
+} from "livekit-server-sdk";
 import type { VideoGrant } from "livekit-server-sdk";
 import type { LiveKitGateway, Role, TokenRequest } from "./types.js";
 
@@ -66,6 +71,12 @@ export class RealLiveKit implements LiveKitGateway {
     for (const p of await this.rooms.listParticipants(roomId)) {
       if (p.kind === 4) await this.rooms.removeParticipant(roomId, p.identity);
     }
+  }
+
+  async sendData(roomId: string, topic: string, payload: string): Promise<void> {
+    await this.rooms.sendData(roomId, new TextEncoder().encode(payload), DataPacket_Kind.RELIABLE, {
+      topic,
+    });
   }
 
   async dispatchAgent(

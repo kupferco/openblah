@@ -1,0 +1,71 @@
+:root {
+  font-family: system-ui, sans-serif;
+  color-scheme: light dark;
+}
+body {
+  margin: 0;
+}
+.shell {
+  max-width: 460px;
+  margin: 2rem auto;
+  padding: 0 1rem;
+}
+.field {
+  display: block;
+  margin: 1rem 0;
+}
+.field input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.5rem;
+  margin-top: 0.25rem;
+  font-size: 1rem;
+}
+.consent {
+  border-left: 3px solid #0284c7;
+  padding-left: 0.75rem;
+}
+.notice {
+  border: 1px solid #8884;
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+}
+.error {
+  color: #dc2626;
+}
+.hint {
+  opacity: 0.7;
+  font-size: 0.9rem;
+}
+.meter {
+  height: 8px;
+  background: #8884;
+  border-radius: 4px;
+  margin: 0.5rem 0;
+  overflow: hidden;
+}
+.meter > div {
+  height: 100%;
+  background: #16a34a;
+  transition: width 60ms;
+}
+.row {
+  display: flex;
+  gap: 0.5rem;
+}
+button {
+  padding: 0.5rem 1rem;
+  font-size: 1rem;
+}
+.primary {
+  display: block;
+  width: 100%;
+  margin-top: 1rem;
+}
+.danger {
+  color: #dc2626;
+}
+section {
+  margin: 1rem 0;
+}

@@ -46,6 +46,23 @@ export interface ParticipantInfo {
   isMuted: boolean;
 }
 
+/** A write action the agent is waiting to run until its owner confirms. */
+export interface ToolApproval {
+  id: string;
+  /** Short label of what will run, e.g. "book table". */
+  tool: string;
+  /** What the agent will do, with the details. Show this to the person. */
+  summary: string;
+  /** Participant who owns the credentials. Only they can confirm. */
+  ownerId: string;
+  /** ISO time after which it lapses. */
+  expiresAt: string;
+}
+
+/** Data topic the agent publishes approval requests on, and the owner's answer goes back on. */
+export const APPROVAL_TOPIC = "openblah.approval";
+export const APPROVAL_RESPONSE_TOPIC = "openblah.approval.response";
+
 /** Everything a UI needs, as one immutable snapshot. */
 export interface ClientSnapshot {
   status: ConnectionStatus;
@@ -54,6 +71,8 @@ export interface ClientSnapshot {
   muted: boolean;
   /** The agent's state, or `unavailable` when no agent is in the room. */
   agentState: AgentState;
+  /** Write actions waiting for confirmation. Empty unless you own the tool credentials. */
+  approvals: ToolApproval[];
   /** True while the AI is paused: it listens to nobody. Show this to everyone. */
   aiPaused: boolean;
   /** Room id and your user id, once connected. */
@@ -176,6 +195,7 @@ export class OpenBlahClient {
     participants: [],
     muted: true,
     agentState: "unavailable",
+    approvals: [],
     aiPaused: false,
     roomId: null,
     userId: null,
@@ -190,6 +210,7 @@ export class OpenBlahClient {
     _kind?: unknown,
     topic?: string,
   ) => {
+    this.handleData(payload, participant, topic);
     if (topic !== CONTROL_TOPIC) return;
     const msg = parseControlMessage(payload);
     // Only the agent may ask the host to invite someone; a guest must not be able to fake it.
@@ -256,6 +277,7 @@ export class OpenBlahClient {
       participants: [],
       muted: true,
       agentState: "unavailable",
+      approvals: [],
       aiPaused: false,
       roomId: null,
       userId: null,
@@ -277,6 +299,25 @@ export class OpenBlahClient {
     const next = !this.snapshot.muted;
     await this.setMuted(next);
     return next;
+  }
+
+  /**
+   * Confirm (`approve: true`) or cancel a pending write action. Only the owner
+   * of the tool credentials is accepted; the agent checks who sent it.
+   */
+  async respondToApproval(id: string, approve: boolean): Promise<void> {
+    const room = this.room;
+    if (!room) return;
+    const agent = [...room.remoteParticipants.values()].find((p) => p.isAgent);
+    await room.localParticipant.publishData(
+      new TextEncoder().encode(JSON.stringify({ approvalId: id, approve })),
+      {
+        reliable: true,
+        topic: APPROVAL_RESPONSE_TOPIC,
+        ...(agent ? { destinationIdentities: [agent.identity] } : {}),
+      },
+    );
+    this.update({ approvals: this.snapshot.approvals.filter((a) => a.id !== id) });
   }
 
   // ---- Invites, consent and host controls (T11) ----
@@ -458,6 +499,37 @@ export class OpenBlahClient {
     } catch {
       // Cleanup must not fail a disconnect.
     }
+  }
+
+  /** Only the agent's messages count; the agent decides who may see a request. */
+  private handleData(payload: Uint8Array, participant: Participant | undefined, topic?: string) {
+    if (topic !== APPROVAL_TOPIC || !participant?.isAgent) return;
+    let msg: { type?: string; id?: unknown } & Partial<ToolApproval>;
+    try {
+      msg = JSON.parse(new TextDecoder().decode(payload));
+    } catch {
+      return;
+    }
+    if (typeof msg.id !== "string") return;
+    const id = msg.id;
+    if (msg.type === "resolved") {
+      this.update({ approvals: this.snapshot.approvals.filter((a) => a.id !== id) });
+      return;
+    }
+    const me = this.room?.localParticipant.identity;
+    // Show the card only to the owner; anyone else cannot confirm anyway.
+    if (msg.type !== "request" || msg.ownerId !== me) return;
+    if (typeof msg.tool !== "string" || typeof msg.summary !== "string") return;
+    const approval: ToolApproval = {
+      id,
+      tool: msg.tool,
+      summary: msg.summary,
+      ownerId: msg.ownerId ?? "",
+      expiresAt: typeof msg.expiresAt === "string" ? msg.expiresAt : "",
+    };
+    this.update({
+      approvals: [...this.snapshot.approvals.filter((a) => a.id !== id), approval],
+    });
   }
 
   private teardown(): void {
