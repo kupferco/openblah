@@ -13,16 +13,24 @@ export const BARGE_IN_MIN_DURATION_MS = 300;
 /** Direct mode: one human, the agent answers every finished turn. */
 export class DirectAgent extends voice.Agent {
   language: SpokenLanguage = "en";
+  /** Finished user turns so far (the confirmation rule for settings changes needs it). */
+  turn = 0;
+  /** A language the room fixed (settings): detection no longer changes it. */
+  private languageLocked = false;
   private ttsEngine: tts.TTS | undefined;
 
   constructor(
     cfg: Pick<AgentConfig, "agentName">,
     private readonly ttsProvider: TtsProvider,
     tools?: llm.ToolContextLike,
+    extraInstructions?: string,
   ) {
     const hasTools = !!tools && Object.keys(tools).length > 0;
     super({
-      instructions: directInstructions(cfg) + (hasTools ? ` ${MCP_INSTRUCTIONS}` : ""),
+      instructions:
+        directInstructions(cfg) +
+        (hasTools ? ` ${MCP_INSTRUCTIONS}` : "") +
+        (extraInstructions ? ` ${extraInstructions}` : ""),
       ...(hasTools ? { tools } : {}),
     });
   }
@@ -34,15 +42,26 @@ export class DirectAgent extends voice.Agent {
 
   /** Follow the language of the latest turn (English or Portuguese). */
   override async onUserTurnCompleted(_ctx: llm.ChatContext, msg: llm.ChatMessage): Promise<void> {
+    this.turn += 1;
     this.applyLanguage(msg.textContent ?? "");
   }
 
-  applyLanguage(text: string): SpokenLanguage {
-    const next = detectLanguage(text, this.language);
-    if (next !== this.language && this.ttsEngine) {
+  /** Fix the spoken language (the room's override); `undefined` goes back to following speech. */
+  lockLanguage(lang: SpokenLanguage | undefined): void {
+    this.languageLocked = lang !== undefined;
+    if (lang) this.setLanguage(lang);
+  }
+
+  private setLanguage(next: SpokenLanguage): void {
+    if (next !== this.language && this.ttsEngine)
       this.ttsProvider.setLanguage(this.ttsEngine, next);
-    }
     this.language = next;
+  }
+
+  applyLanguage(text: string): SpokenLanguage {
+    if (this.languageLocked) return this.language;
+    const next = detectLanguage(text, this.language);
+    this.setLanguage(next);
     return next;
   }
 }
