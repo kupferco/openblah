@@ -50,6 +50,13 @@
       ]
     }
   ],
+  "redirects": [
+    {
+      "source": "/mock",
+      "destination": "/mock/",
+      "statusCode": 308
+    }
+  ],
   "rewrites": [
     {
       "source": "/j/:path*",
