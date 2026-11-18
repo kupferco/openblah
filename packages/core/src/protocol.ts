@@ -7,31 +7,33 @@
 /** Who someone is in a room. `host` and `member` are app users, `guest` joined by invite link. */
 export type Role = "host" | "member" | "guest";
 
+/** Wire-level detail. @internal */
 export const CONTROL_TOPIC = "openblah.control";
 
-/** Participant attribute the agent sets to `"true"` while listening is paused. */
+/** Participant attribute the agent sets to `"true"` while listening is paused. @internal */
 export const AI_PAUSED_ATTRIBUTE = "openblah.ai_paused";
 
-/** Agent participant attributes: the room mode and whether the agent is muted for everyone. */
+/** Agent participant attributes: the room mode and whether the agent is muted for everyone. @internal */
 export const MODE_ATTRIBUTE = "openblah.mode";
+/** Wire-level detail. @internal */
 export const AGENT_MUTED_ATTRIBUTE = "openblah.agent_muted";
 
 /** How the agent behaves: only when addressed, also at natural pauses, or one to one with the host. */
 export type RoomMode = "listening" | "facilitating" | "direct";
 
-/** Client to agent: switch the room mode (Direct is host only). */
+/** Client to agent: switch the room mode (Direct is host only). @internal */
 export interface SetModeMessage {
   type: "set_mode";
   mode: RoomMode;
 }
 
-/** Client to agent: mute or unmute the agent for everyone. */
+/** Client to agent: mute or unmute the agent for everyone. @internal */
 export interface MuteAgentMessage {
   type: "mute_agent";
   muted: boolean;
 }
 
-/** Client to agent: pause or resume all listening for everyone. */
+/** Client to agent: pause or resume all listening for everyone. @internal */
 export interface PauseMessage {
   type: "pause_ai";
   paused: boolean;
@@ -45,17 +47,18 @@ export interface InviteRequestMessage {
   who: string;
 }
 
-/** Host's client to agent: what happened to an invite request. */
+/** Host's client to agent: what happened to an invite request. @internal */
 export interface InviteResponseMessage {
   type: "invite_response";
   requestId: string;
   status: "sent" | "declined";
 }
 
+/** Wire-level detail. @internal */
 export type ControlMessage =
   PauseMessage | InviteRequestMessage | InviteResponseMessage | SetModeMessage | MuteAgentMessage;
 
-/** Parse a control message; null for anything that is not one. */
+/** Parse a control message; null for anything that is not one. @internal */
 export function parseControlMessage(payload: Uint8Array | string): ControlMessage | null {
   let raw: unknown;
   try {
@@ -91,11 +94,12 @@ export function parseControlMessage(payload: Uint8Array | string): ControlMessag
   return null;
 }
 
+/** Wire-level detail. @internal */
 export function encodeControlMessage(msg: ControlMessage): Uint8Array<ArrayBuffer> {
   return new TextEncoder().encode(JSON.stringify(msg));
 }
 
-/** Read the role the server put in the participant metadata. Unknown values give `guest` (least rights). */
+/** Read the role the server put in the participant metadata. Unknown values give `guest` (least rights). @internal */
 export function roleFromMetadata(metadata: string | undefined): Role {
   try {
     const role = (JSON.parse(metadata ?? "") as { role?: unknown }).role;
