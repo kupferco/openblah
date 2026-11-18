@@ -21,6 +21,17 @@ Voice only at first. No video.
 - npm packages for web and React Native (Expo), so other apps can add good voice by installing one package
 - Later, an Apple Watch client: tap a watch-face complication and talk
 
+## Install
+
+```sh
+npm install @openblah/web react react-dom                      # browsers
+npx expo install @openblah/react-native @livekit/react-native @livekit/react-native-webrtc livekit-client  # Expo dev builds
+```
+
+**0.x, may change.** These packages are at 0.1.0. The API can change in any minor release until 1.0, so pin an exact version. See [CHANGELOG.md](CHANGELOG.md), [docs/quickstart.md](docs/quickstart.md) and [docs/sdk-stability.md](docs/sdk-stability.md).
+
+What is published: `@openblah/web`, `@openblah/react-native`, `@openblah/server` and `@openblah/core` (the shared code the two SDKs depend on; use the SDKs, not core). The agent worker (`@openblah/agent`) is not on npm: it is private and ships as a Docker image built from `packages/agent/Dockerfile`. Releases are made by the Release workflow (`.github/workflows/release.yml`) with npm provenance.
+
 ## Repo layout
 
 A pnpm workspaces monorepo (Node 20+, TypeScript strict).

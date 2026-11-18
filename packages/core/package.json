@@ -1,16 +1,18 @@
 {
   "name": "@openblah/core",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "license": "MIT",
   "description": "Shared client and React hooks behind @openblah/web and @openblah/react-native (0.x, unstable). Use those packages, not this one.",
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "provenance": true
   },
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "README.md"
   ],
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
@@ -42,5 +44,14 @@
       "types": "./dist/react.d.ts",
       "default": "./dist/react.js"
     }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kupferco/openblah.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/kupferco/openblah#readme",
+  "bugs": {
+    "url": "https://github.com/kupferco/openblah/issues"
   }
 }
