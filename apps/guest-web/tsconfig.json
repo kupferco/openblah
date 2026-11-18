@@ -1,5 +1,16 @@
 {
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": { "outDir": "dist", "rootDir": "src", "types": ["node"] },
-  "include": ["src"]
+  "compilerOptions": {
+    "noEmit": true,
+    "lib": ["ES2022", "DOM"],
+    "jsx": "react-jsx",
+    "types": ["node", "vite/client"],
+    "paths": {
+      "@openblah/core": ["../../packages/core/src/index.ts"],
+      "@openblah/core/react": ["../../packages/core/src/react.ts"],
+      "@openblah/web": ["../../packages/web/src/index.ts"],
+      "@openblah/web/react": ["../../packages/web/src/react.ts"]
+    }
+  },
+  "include": ["src", "vite.config.ts"]
 }
