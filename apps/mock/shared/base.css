@@ -6,7 +6,7 @@ html,
 body {
   margin: 0;
   min-height: 100%;
-  background: #070a12;
+  background: var(--ob-page);
   color: var(--ob-text);
   font-family: var(--ob-font);
   font-size: var(--ob-fs-md);
@@ -33,7 +33,7 @@ button {
   align-items: center;
   gap: var(--ob-s3);
   padding: var(--ob-s2) var(--ob-s4);
-  background: #05070d;
+  background: var(--ob-chrome);
   border-bottom: 1px solid var(--ob-border);
   font-size: var(--ob-fs-sm);
 }
@@ -59,7 +59,7 @@ button {
   position: sticky;
   top: 53px;
   z-index: 49;
-  background: #05070d;
+  background: var(--ob-chrome);
   border-bottom: 1px solid var(--ob-border);
   padding: var(--ob-s3) var(--ob-s4);
 }
@@ -173,7 +173,7 @@ p {
 }
 .btn.danger {
   background: var(--ob-danger);
-  color: #2a0006;
+  color: var(--ob-on-danger);
   border-color: var(--ob-danger);
 }
 .btn[disabled] {
@@ -220,11 +220,11 @@ p {
   color: var(--ob-text-dim);
 }
 .badge.ai {
-  background: rgba(180, 140, 255, 0.18);
+  background: var(--ob-agent-soft);
   color: var(--ob-agent);
 }
 .badge.live {
-  background: rgba(56, 211, 159, 0.18);
+  background: var(--ob-speaking-soft);
   color: var(--ob-speaking);
 }
 .spacer {
@@ -281,7 +281,7 @@ p {
 }
 .avatar.speaking {
   border-color: var(--ob-speaking);
-  box-shadow: 0 0 0 6px rgba(56, 211, 159, 0.18);
+  box-shadow: 0 0 0 6px var(--ob-speaking-soft);
 }
 .avatar .mic-off {
   position: absolute;
@@ -291,11 +291,32 @@ p {
   height: 24px;
   border-radius: 50%;
   background: var(--ob-danger);
-  color: #2a0006;
+  color: var(--ob-on-danger);
   font-size: 13px;
   display: grid;
   place-items: center;
 }
 .screen > .badge {
   align-self: flex-start;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ob-s3);
+}
+
+.toast {
+  position: fixed;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  background: var(--ob-surface-2);
+  color: var(--ob-text);
+  border: 1px solid var(--ob-border);
+  border-radius: var(--ob-r-pill);
+  padding: var(--ob-s3) var(--ob-s5);
+  font-weight: 700;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 }

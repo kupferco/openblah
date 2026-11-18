@@ -5,13 +5,9 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Standalone app · OpenBlah mock</title>
     <link rel="stylesheet" href="../shared/base.css" />
+    <script src="../shared/theme.js"></script>
     <link rel="stylesheet" href="../shared/call.css" />
     <style>
-      .list {
-        display: flex;
-        flex-direction: column;
-        gap: var(--ob-s3);
-      }
       .item {
         display: flex;
         align-items: center;
@@ -86,7 +82,7 @@
     <div class="stage"><div class="phone" id="phone"></div></div>
     <script src="../shared/mock.js"></script>
     <script>
-      const { h, chrome, callView, CONSENT } = OB;
+      const { h, chrome, callView, callDetail, CALLS, CONSENT } = OB;
       const s = {
         screen: "home",
         data: "some",
@@ -98,6 +94,7 @@
         aiOnNewRoom: true,
         sheet: false,
         room: null,
+        call: "sync",
       };
       const ROOMS = [
         { id: "r1", name: "Family chat", who: "Mum, Maria", live: true, n: 2, ai: true },
@@ -124,7 +121,11 @@
             h(
               "button",
               {
-                "aria-current": String(s.screen === k),
+                "aria-current": String(
+                  s.screen === k ||
+                    (k === "rooms" && s.screen === "room") ||
+                    (k === "history" && s.screen === "detail"),
+                ),
                 onclick: () => {
                   s.screen = k;
                   s.sheet = false;
@@ -227,6 +228,15 @@
                   s.agent = s.agent === "off" ? "listening" : "off";
                   render();
                 },
+                invite: () => {
+                  const url = "openblah.example/j/abc123";
+                  if (navigator.share)
+                    navigator.share({ title: "Join my call", url }).catch(() => {});
+                  else {
+                    navigator.clipboard?.writeText(url).catch(() => {});
+                    OB.toast("Invite link copied");
+                  }
+                },
                 leave: () => {
                   s.screen = "home";
                   render();
@@ -301,26 +311,47 @@
                 : h(
                     "div",
                     { class: "list" },
-                    h(
-                      "div",
-                      { class: "card" },
-                      h("b", {}, "Project sync"),
-                      h("p", { class: "small dim" }, "Yesterday · Tom, Ana"),
-                      h(
-                        "p",
-                        { class: "small" },
-                        "Summary: agreed to ship the invite flow on Friday; Tom owns the consent text.",
-                      ),
-                    ),
-                    h(
-                      "div",
-                      { class: "card" },
-                      h("b", {}, "Just us"),
-                      h("p", { class: "small dim" }, "Mon · Maria"),
-                      h("p", { class: "small dim" }, "No notes: AI was off."),
-                    ),
+                    ["sync", "us"].map((id) => {
+                      const c = CALLS[id];
+                      return h(
+                        "button",
+                        {
+                          class: "item",
+                          onclick: () => {
+                            s.call = id;
+                            s.screen = "detail";
+                            render();
+                          },
+                        },
+                        h(
+                          "div",
+                          { class: "meta" },
+                          h("b", {}, c.name),
+                          h("span", { class: "small dim" }, c.when + " · " + c.who),
+                          c.ai
+                            ? h(
+                                "span",
+                                { class: "small", style: "display:block" },
+                                "Summary: " + c.summary,
+                              )
+                            : h(
+                                "span",
+                                { class: "small dim", style: "display:block" },
+                                "No notes: AI was off.",
+                              ),
+                        ),
+                        h("span", { class: "dim" }, "›"),
+                      );
+                    }),
                   ),
             ),
+          ];
+        } else if (s.screen === "detail") {
+          body = [
+            callDetail(CALLS[s.call], () => {
+              s.screen = "history";
+              render();
+            }),
           ];
         } else {
           const list =
@@ -384,8 +415,8 @@
                 ),
               ),
             );
-          body.push(tabs());
         }
+        if (s.screen !== "call") body.push(tabs()); // full screen during a call
         if (s.sheet) body.push(sheet());
         phone.replaceChildren(...body);
       }

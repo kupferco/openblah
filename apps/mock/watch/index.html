@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Apple Watch · OpenBlah mock</title>
     <link rel="stylesheet" href="../shared/base.css" />
+    <script src="../shared/theme.js"></script>
     <style>
       .watch-stage {
         display: grid;
@@ -17,12 +18,55 @@
         height: 40px;
         background: #1c2230;
       }
+      /* the watch screen stays dark (OLED) in both themes */
+      .case {
+        color: var(--ob-text);
+      }
+      .wscreen.top {
+        justify-content: flex-start;
+        overflow-y: auto;
+      }
+      .wlist {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .wlist .wbtn {
+        min-height: 36px;
+        font-size: 13px;
+        text-align: left;
+        padding: 0 14px;
+      }
+      .wrow.three .wbtn {
+        white-space: nowrap;
+        min-width: 0;
+        font-size: 11px;
+        padding: 0 2px;
+      }
+      .wbtn.live {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .wbtn .rname {
+        flex: 1;
+      }
+      .wbtn .ldot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--ob-speaking);
+      }
+      .wbtn .rjoin {
+        color: var(--ob-speaking);
+        font-size: 12px;
+      }
       .band.b {
         margin-top: -8px;
       }
       .case {
         width: 220px;
-        height: 268px;
+        height: 330px;
         border-radius: 56px;
         background: #000;
         border: 6px solid #2a3144;
@@ -108,35 +152,69 @@
   <body>
     <div class="watch-stage">
       <div class="band"></div>
-      <div class="case" id="w"></div>
+      <div class="case" data-theme="dark" id="w"></div>
       <div class="band b"></div>
       <p class="small dim" style="max-width: 320px; text-align: center">
-        Watch-sized frame (about 200×250). Join, mute and leave; the watch is a thin client and the
-        logic stays on the server.
+        Watch-sized frame (about 200×250). Join or start a call, mute, pause the AI and leave; the
+        watch is a thin client and the logic stays on the server.
       </p>
     </div>
     <script src="../shared/mock.js"></script>
     <script>
       const { h, chrome } = OB;
-      const s = { screen: "idle", agent: "listening", muted: false };
+      const s = { screen: "idle", agent: "listening", muted: false, invites: false };
       const w = document.getElementById("w");
+      // [room, has a live call]
+      const ROOMS = [
+        ["Family chat", true],
+        ["Project sync", false],
+        ["Just us", false],
+      ];
+      // live calls first, then invites. In the "Invites" state there is a second choice.
+      const pickList = () => [
+        ...ROOMS.filter((r) => r[1]).map((r) => r[0]),
+        ...(s.invites ? ["Invite from Tom"] : []),
+      ];
+      function joinTop() {
+        go(pickList().length > 1 ? "pick" : "call");
+      }
+      function go(screen) {
+        s.screen = screen;
+        render();
+        ui.redraw();
+      }
       function render() {
         let b;
-        if (s.screen === "idle")
+        if (s.screen === "pick")
+          b = [
+            h("b", {}, "Join a call"),
+            h(
+              "div",
+              { class: "wlist" },
+              pickList().map((r) =>
+                h("button", { class: "wbtn go", onclick: () => go("call") }, r),
+              ),
+              h("button", { class: "wbtn", onclick: () => go("idle") }, "Back"),
+            ),
+          ];
+        else if (s.screen === "idle")
           b = [
             h("b", {}, "OpenBlah"),
-            h("span", { class: "wcap" }, "Family chat is live · Mum, Maria"),
+            h("button", { class: "wbtn go", onclick: joinTop }, "Join"),
+            h("button", { class: "wbtn", onclick: () => go("call") }, "Quick call"),
+            h("span", { class: "wcap" }, "Your rooms"),
             h(
-              "button",
-              {
-                class: "wbtn go",
-                onclick: () => {
-                  s.screen = "call";
-                  render();
-                  ui.redraw();
-                },
-              },
-              "Join",
+              "div",
+              { class: "wlist" },
+              ROOMS.map(([r, live]) =>
+                h(
+                  "button",
+                  { class: "wbtn" + (live ? " live" : ""), onclick: () => go("call") },
+                  live ? h("span", { class: "ldot" }) : "",
+                  h("span", { class: "rname" }, r),
+                  live ? h("span", { class: "rjoin" }, "Join") : "",
+                ),
+              ),
             ),
           ];
         else if (s.screen === "call") {
@@ -152,7 +230,7 @@
             h("span", { class: "wcap" }, label + (s.muted ? " · you're muted" : "")),
             h(
               "div",
-              { class: "wrow" },
+              { class: "wrow three" },
               h(
                 "button",
                 {
@@ -164,6 +242,18 @@
                   },
                 },
                 s.muted ? "Unmute" : "Mute",
+              ),
+              h(
+                "button",
+                {
+                  class: "wbtn" + (s.agent === "off" ? " on" : ""),
+                  onclick: () => {
+                    s.agent = s.agent === "off" ? "listening" : "off";
+                    render();
+                    ui.redraw();
+                  },
+                },
+                s.agent === "off" ? "Resume" : "Pause AI",
               ),
               h(
                 "button",
@@ -196,7 +286,13 @@
               "Done",
             ),
           ];
-        w.replaceChildren(h("div", { class: "wscreen" }, b));
+        w.replaceChildren(
+          h(
+            "div",
+            { class: "wscreen" + (s.screen === "idle" || s.screen === "pick" ? " top" : "") },
+            b,
+          ),
+        );
       }
       const ui = chrome(
         "Apple Watch",
@@ -205,9 +301,18 @@
             key: "screen",
             label: "Screen",
             options: [
-              ["idle", "Join"],
+              ["idle", "Home"],
+              ["pick", "Pick a call"],
               ["call", "In call"],
               ["ended", "Ended"],
+            ],
+          },
+          {
+            key: "invites",
+            label: "Invites",
+            options: [
+              [false, "None (one live call)"],
+              [true, "Invite waiting"],
             ],
           },
           {
