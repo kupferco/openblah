@@ -30,7 +30,7 @@
   height: 88px;
   border-radius: 50%;
   background: var(--ob-agent);
-  color: #1d0b3a;
+  color: var(--ob-on-agent);
   display: grid;
   place-items: center;
   font-size: 34px;
@@ -130,17 +130,17 @@
 }
 .ctl.off {
   background: var(--ob-danger);
-  color: #2a0006;
+  color: var(--ob-on-danger);
 }
 .ctl.off small {
-  color: #2a0006;
+  color: var(--ob-on-danger);
 }
 .ctl.leave {
   background: var(--ob-danger);
-  color: #2a0006;
+  color: var(--ob-on-danger);
 }
 .ctl.leave small {
-  color: #2a0006;
+  color: var(--ob-on-danger);
 }
 @keyframes breathe {
   50% {

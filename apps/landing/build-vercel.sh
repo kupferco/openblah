@@ -27,3 +27,15 @@ if [ ! -f apps/landing/dist/index.html ]; then
   echo "build-vercel.sh: apps/landing/dist/index.html is missing" >&2
   exit 1
 fi
+
+# Design mock (apps/mock, static) served under /mock/. Screenshots are not served.
+rm -rf apps/landing/dist/mock
+mkdir -p apps/landing/dist/mock
+for f in apps/mock/*; do
+  case "$(basename "$f")" in screenshots|package.json|README.md) continue ;; esac
+  cp -r "$f" apps/landing/dist/mock/
+done
+if [ ! -f apps/landing/dist/mock/index.html ]; then
+  echo "build-vercel.sh: apps/landing/dist/mock/index.html is missing" >&2
+  exit 1
+fi

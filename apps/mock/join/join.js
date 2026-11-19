@@ -58,6 +58,18 @@
           : "",
         h("div", { class: "spacer" }),
         next,
+        h(
+          "button",
+          {
+            class: "small dim",
+            style: "align-self:center;background:none;border:0;padding:8px 16px;min-height:36px",
+            onclick: () => {
+              s.step = "declined";
+              render();
+            },
+          },
+          "Not now",
+        ),
       ];
     } else if (s.step === "mic") {
       const m = h("div", { class: "meter" });
@@ -106,22 +118,16 @@
       queueMicrotask(() => {
         stopMeter = meter(m, () => s.mic === "ok");
       });
-    } else {
+    } else if (s.step === "declined") {
       body = [
-        h("div", { style: "height:40px" }),
-        h(
-          "div",
-          { class: "agent listening", style: "align-self:center" },
-          h("div", { class: "orb" }, h("span", { class: "core" }, "✦")),
-        ),
-        h("h1", { style: "text-align:center" }, "You're in, " + (form.name.trim() || "guest")),
+        h("div", { class: "spacer" }),
+        h("h1", { style: "text-align:center" }, "You didn't join"),
         h(
           "p",
           { class: "dim", style: "text-align:center" },
-          needConsent ? "Blah is here and listening." : "Joining Maria and Tom…",
+          "No problem. You can close this page, or use the invite link again any time.",
         ),
         h("div", { class: "spacer" }),
-        h("a", { class: "btn primary block", href: "../call/index.html" }, "Open the call screen"),
         h(
           "button",
           {
@@ -131,9 +137,13 @@
               render();
             },
           },
-          "Start over",
+          "Join after all",
         ),
       ];
+    } else {
+      // joined: straight to the call screen, which shows "You're in" as a toast
+      location.href = "../call/index.html?joined=1";
+      return;
     }
     host.replaceChildren(h("div", { class: "screen" }, body));
   }
@@ -162,7 +172,8 @@
         options: [
           ["name", "Name"],
           ["mic", "Mic check"],
-          ["joined", "Joined"],
+          ["joined", "In the call (straight to call screen)"],
+          ["declined", "Not now"],
         ],
       },
     ],

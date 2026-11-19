@@ -1,7 +1,12 @@
 /* OpenBlah design tokens. The one place for colours, type, spacing, radii.
    The real UI tasks should copy these values (or import this file). */
-:root {
+:root,
+:root[data-theme="dark"],
+[data-theme="dark"] {
+  color-scheme: dark;
   /* colour: surfaces */
+  --ob-page: #070a12; /* area behind the phone frame */
+  --ob-chrome: #05070d; /* mock top bar */
   --ob-bg: #0f1420;
   --ob-surface: #182030;
   --ob-surface-2: #212b40;
@@ -16,6 +21,10 @@
   --ob-speaking: #38d39f;
   --ob-danger: #ff5d6c;
   --ob-warn: #ffb84d;
+  --ob-on-danger: #2a0006;
+  --ob-on-agent: #1d0b3a;
+  --ob-agent-soft: rgba(180, 140, 255, 0.18);
+  --ob-speaking-soft: rgba(56, 211, 159, 0.18);
 
   /* type */
   --ob-font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -39,4 +48,51 @@
   --ob-r-lg: 22px;
   --ob-r-pill: 999px;
   --ob-tap: 48px; /* minimum touch target */
+}
+
+/* Light theme: follows the device unless the toggle set data-theme. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    color-scheme: light;
+    --ob-page: #e6eaf3;
+    --ob-chrome: #ffffff;
+    --ob-bg: #f4f6fb;
+    --ob-surface: #ffffff;
+    --ob-surface-2: #e7ecf6;
+    --ob-border: #ccd5e6;
+    --ob-text: #111828;
+    --ob-text-dim: #556079;
+    --ob-primary: #3a5bdc;
+    --ob-primary-text: #ffffff;
+    --ob-agent: #7a45d6;
+    --ob-speaking: #0e8f5d;
+    --ob-danger: #d6283b;
+    --ob-warn: #b36200;
+    --ob-on-danger: #ffffff;
+    --ob-on-agent: #ffffff;
+    --ob-agent-soft: rgba(122, 69, 214, 0.14);
+    --ob-speaking-soft: rgba(14, 143, 93, 0.14);
+  }
+}
+:root[data-theme="light"],
+[data-theme="light"] {
+  color-scheme: light;
+  --ob-page: #e6eaf3;
+  --ob-chrome: #ffffff;
+  --ob-bg: #f4f6fb;
+  --ob-surface: #ffffff;
+  --ob-surface-2: #e7ecf6;
+  --ob-border: #ccd5e6;
+  --ob-text: #111828;
+  --ob-text-dim: #556079;
+  --ob-primary: #3a5bdc;
+  --ob-primary-text: #ffffff;
+  --ob-agent: #7a45d6;
+  --ob-speaking: #0e8f5d;
+  --ob-danger: #d6283b;
+  --ob-warn: #b36200;
+  --ob-on-danger: #ffffff;
+  --ob-on-agent: #ffffff;
+  --ob-agent-soft: rgba(122, 69, 214, 0.14);
+  --ob-speaking-soft: rgba(14, 143, 93, 0.14);
 }
