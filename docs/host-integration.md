@@ -43,6 +43,8 @@ Who pays for the language and speech providers, in this order ([keys-and-trial.m
 
 Self-hosting is the product-key mode with your own server.
 
+A worked example for a first embedded product: [integrations/housekeeper.md](integrations/housekeeper.md).
+
 ## Warm-up
 
 The agent worker scales to zero. Call `warmup` when the page or app opens, and when it becomes visible again, so the agent joins fast:
