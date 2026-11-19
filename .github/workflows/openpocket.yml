@@ -426,6 +426,8 @@ jobs:
           EXEC="${{ steps.airesolve.outputs.execution_file }}"
           if [ -n "$EXEC" ] && [ -f "$EXEC" ]; then
             echo "tokens=$(jq -r '[.. | objects | select(.type? == "result")] | last | ((.usage.input_tokens // 0) + (.usage.output_tokens // 0) + (.usage.cache_creation_input_tokens // 0) + (.usage.cache_read_input_tokens // 0))' "$EXEC" 2>/dev/null || echo 0)" >> "$GITHUB_OUTPUT"
+            # What the session reported, for the usage record (missing values stay null).
+            echo "usage=$(jq -c --arg kind resolve '[.. | objects | select(.type? == "result")] | last | select(. != null) | {kind:$kind, inputTokens:.usage.input_tokens, outputTokens:.usage.output_tokens, cacheReadTokens:.usage.cache_read_input_tokens, cacheWriteTokens:.usage.cache_creation_input_tokens, costUsd:.total_cost_usd, durationMs:.duration_ms, apiMs:.duration_api_ms, turns:.num_turns, model:((.modelUsage // {}) | keys | first)}' "$EXEC" 2>/dev/null || true)" >> "$GITHUB_OUTPUT"
           fi
           [ "${{ steps.airesolve.outcome }}" = success ] || { drop "the session failed"; exit 0; }
           # Bounded: only files that were in conflict may differ from the merge result, none may be risky or still conflicted.
@@ -502,6 +504,7 @@ jobs:
           AI_NOTE: ${{ steps.aifinish.outputs.note }}
           AI_HUNKS: ${{ steps.aifinish.outputs.hunks }}
           AI_TOKENS: ${{ steps.aifinish.outputs.tokens }}
+          AI_USAGE: ${{ steps.aifinish.outputs.usage }}
           AI_ROUND: ${{ steps.sync.outputs.round }}
           EXEC_FILE: ${{ steps.claude.outputs.execution_file }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -516,14 +519,21 @@ jobs:
           if [ -n "$EXEC_FILE" ] && [ -f "$EXEC_FILE" ]; then
             FINAL="$(jq -r '[.. | objects | select(.type? == "result")] | last | (.result // "") | tostring | .[0:8000]' "$EXEC_FILE" 2>/dev/null || true)"
           fi
+          # What each session reported (tokens, API-equivalent cost, time, model), for the usage record. Never fails the report.
+          SESSION_USAGE=""
+          if [ -n "$EXEC_FILE" ] && [ -f "$EXEC_FILE" ]; then
+            SESSION_USAGE="$(jq -c --arg kind session '[.. | objects | select(.type? == "result")] | last | select(. != null) | {kind:$kind, inputTokens:.usage.input_tokens, outputTokens:.usage.output_tokens, cacheReadTokens:.usage.cache_read_input_tokens, cacheWriteTokens:.usage.cache_creation_input_tokens, costUsd:.total_cost_usd, durationMs:.duration_ms, apiMs:.duration_api_ms, turns:.num_turns, model:((.modelUsage // {}) | keys | first)}' "$EXEC_FILE" 2>/dev/null || true)"
+          fi
+          USAGE="$(printf '%s\n%s\n' "$SESSION_USAGE" "$AI_USAGE" | jq -cs '.' 2>/dev/null || echo '[]')"
           jq -n \
+            --argjson usage "$USAGE" \
             --arg repo "${{ github.repository }}" --arg branch "$BRANCH" \
             --arg task "${{ inputs.task_id }}" --arg outcome "$OUTCOME" \
             --arg pushed "${PUSHED:-false}" --arg run "$RUN_URL" --arg summary "$SUMMARY" \
             --arg pushError "$PUSH_ERROR" --arg final "$FINAL" \
             --arg syncStatus "${AI_STATUS:-$SYNC_STATUS}" --arg syncNote "${AI_NOTE:-$SYNC_NOTE}" --arg syncRisky "$SYNC_RISKY" --arg syncFiles "$SYNC_FILES" \
             --arg aiHunks "$AI_HUNKS" --arg aiTokens "${AI_TOKENS:-0}" --arg aiRound "${AI_ROUND:-0}" --arg aiUsed "$([ -n "$AI_STATUS" ] && echo true || echo false)" \
-            '{aiResolved:($aiUsed=="true"), aiHunks:$aiHunks, aiTokens:($aiTokens|tonumber? // 0), aiRound:($aiRound|tonumber? // 0), syncStatus:$syncStatus, syncNote:$syncNote, syncRisky:($syncRisky=="true"), syncFiles:($syncFiles | split(", ") | map(select(. != "")))} + {repo:$repo, branch:$branch, taskId:($task|tonumber), outcome:$outcome, pushed:($pushed=="true"), pushError:$pushError, runUrl:$run, summary:$summary, finalAnswer:$final}' \
+            '{usage:$usage, aiResolved:($aiUsed=="true"), aiHunks:$aiHunks, aiTokens:($aiTokens|tonumber? // 0), aiRound:($aiRound|tonumber? // 0), syncStatus:$syncStatus, syncNote:$syncNote, syncRisky:($syncRisky=="true"), syncFiles:($syncFiles | split(", ") | map(select(. != "")))} + {repo:$repo, branch:$branch, taskId:($task|tonumber), outcome:$outcome, pushed:($pushed=="true"), pushError:$pushError, runUrl:$run, summary:$summary, finalAnswer:$final}' \
           | curl -fsS -X POST "$OPENPOCKET_URL/hooks/run" \
               -H "Authorization: Bearer $OPENPOCKET_HOOK_SECRET" \
               -H "Content-Type: application/json" --data-binary @-
