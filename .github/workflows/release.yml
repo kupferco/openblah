@@ -1,0 +1,58 @@
+# Publishes the 0.x packages to npm. Run by hand (Actions > Release) or push a tag like v0.1.0.
+# Needs the repo secret NPM_TOKEN (an automation token for the @openblah scope).
+name: Release
+on:
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Dry run (build and pack, do not publish)
+        type: boolean
+        default: false
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  id-token: write # npm provenance
+
+concurrency:
+  group: release
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - name: Check the npm token
+        if: github.event.inputs.dry-run != 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo '::viber-manual::{"reason":"the repo secret NPM_TOKEN is not set","action":"Create the @openblah npm organisation (or confirm the scope), create an automation token, and add it as the repo Actions secret NPM_TOKEN on GitHub.","commands":[],"verify":"Re-run the Release workflow; the Check the npm token step passes."}'
+            exit 1
+          fi
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - name: Check tag matches version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          v=$(node -p "require('./packages/web/package.json').version")
+          [ "v$v" = "${GITHUB_REF_NAME}" ] || { echo "Tag ${GITHUB_REF_NAME} does not match version $v"; exit 1; }
+      - name: Dry run
+        if: github.event.inputs.dry-run == 'true'
+        run: pnpm --filter "@openblah/core" --filter "@openblah/web" --filter "@openblah/react-native" --filter "@openblah/server" publish --dry-run --no-git-checks
+      - name: Publish
+        if: github.event.inputs.dry-run != 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: "true"
+        run: pnpm --filter "@openblah/core" --filter "@openblah/web" --filter "@openblah/react-native" --filter "@openblah/server" publish --access public --no-git-checks
