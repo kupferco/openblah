@@ -15,6 +15,7 @@ import {
 } from "./api.js";
 import {
   AI_PAUSED_ATTRIBUTE,
+  MODE_ATTRIBUTE,
   CONTROL_TOPIC,
   encodeControlMessage,
   parseControlMessage,
@@ -22,6 +23,7 @@ import {
   type ControlMessage,
   type InviteRequestMessage,
   type Role,
+  type RoomMode,
 } from "./protocol.js";
 
 /**
@@ -76,6 +78,8 @@ export interface ClientSnapshot {
   approvals: ToolApproval[];
   /** True while the AI is paused: it listens to nobody. Show this to everyone. */
   aiPaused: boolean;
+  /** The agent's mode (Listening, Facilitating, Direct); `listening` until the agent says otherwise. */
+  mode: RoomMode;
   /** Room id and your user id, once connected. */
   roomId: string | null;
   userId: string | null;
@@ -199,6 +203,7 @@ export class OpenBlahClient {
     agentState: "unavailable",
     approvals: [],
     aiPaused: false,
+    mode: "listening",
     roomId: null,
     userId: null,
     role: null,
@@ -281,6 +286,7 @@ export class OpenBlahClient {
       agentState: "unavailable",
       approvals: [],
       aiPaused: false,
+      mode: "listening",
       roomId: null,
       userId: null,
       role: null,
@@ -439,6 +445,11 @@ export class OpenBlahClient {
     await this.sendControl({ type: "pause_ai", paused });
   }
 
+  /** Switch the agent's mode. Direct is host only (the agent ignores it from anyone else). */
+  async setMode(mode: RoomMode): Promise<void> {
+    await this.sendControl({ type: "set_mode", mode });
+  }
+
   /** Host: tell the agent what happened to an `inviteRequest` ("sent" once a link was shared). */
   async respondToInviteRequest(requestId: string, status: "sent" | "declined"): Promise<void> {
     await this.sendControl({ type: "invite_response", requestId, status });
@@ -564,12 +575,17 @@ export class OpenBlahClient {
       muted,
       agentState: deriveAgentState(agent, muted),
       aiPaused: agent?.attributes[AI_PAUSED_ATTRIBUTE] === "true",
+      mode: modeFromAttribute(agent?.attributes[MODE_ATTRIBUTE]),
       roomId: room.name,
       userId: local.identity,
       role: roleFromMetadata(local.metadata),
       roomMetadata: (room as { metadata?: string }).metadata ?? null,
     });
   }
+}
+
+function modeFromAttribute(v: string | undefined): RoomMode {
+  return v === "direct" || v === "facilitating" ? v : "listening";
 }
 
 function toStatus(state: ConnectionState): ConnectionStatus {

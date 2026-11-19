@@ -41,5 +41,6 @@ React hooks and the `<OpenBlahRoom />` component of `@openblah/web`. Import from
 - [useParticipants](functions/useParticipants.md)
 - [useRole](functions/useRole.md)
 - [useRoom](functions/useRoom.md)
+- [useRoomMode](functions/useRoomMode.md)
 - [useRoomView](functions/useRoomView.md)
 - [useToolApprovals](functions/useToolApprovals.md)

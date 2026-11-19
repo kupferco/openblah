@@ -232,6 +232,25 @@ describe("client: pause AI", () => {
   });
 });
 
+describe("client: mode", () => {
+  it("sends set_mode and reads the mode from the agent's attribute", async () => {
+    const { f, client } = await connected("host");
+    expect(client.getSnapshot().mode).toBe("listening");
+    await client.setMode("direct");
+    const [data, opts] = f.room.localParticipant.publishData.mock.calls[0] as unknown as [
+      Uint8Array,
+      { topic: string },
+    ];
+    expect(opts.topic).toBe(CONTROL_TOPIC);
+    expect(parseControlMessage(data)).toEqual({ type: "set_mode", mode: "direct" });
+    const a = agentP();
+    a.attributes["openblah.mode"] = "direct";
+    f.remote.set("agent", a);
+    f.emit(RoomEvent.ParticipantConnected);
+    expect(client.getSnapshot().mode).toBe("direct");
+  });
+});
+
 describe("client: invite requests from the agent", () => {
   const payload = (requestId = "r1") =>
     encodeControlMessage({ type: "invite_request", requestId, who: "my mother" });

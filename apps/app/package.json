@@ -3,14 +3,31 @@
   "version": "0.0.0",
   "license": "MIT",
   "private": true,
-  "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "files": [
-    "dist"
-  ],
+  "main": "index.js",
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "build": "tsc -p tsconfig.json"
+    "start": "expo start --dev-client --port 8098",
+    "prebuild": "expo prebuild",
+    "ios": "expo run:ios --device --port 8098",
+    "android": "expo run:android"
+  },
+  "dependencies": {
+    "@livekit/react-native": "^3.1.0",
+    "@livekit/react-native-webrtc": "^150.1.1",
+    "@openblah/react-native": "workspace:^",
+    "@react-native-async-storage/async-storage": "^3.1.1",
+    "expo": "^58.0.25",
+    "expo-auth-session": "^58.0.19",
+    "expo-linking": "^58.0.17",
+    "expo-web-browser": "^58.1.0",
+    "firebase": "^13.4.0",
+    "livekit-client": "^2.24.1",
+    "react": "^19.3.1",
+    "react-native": "^0.88.1"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-test-renderer": "^19.1.0",
+    "react-test-renderer": "^19.3.1"
   }
 }

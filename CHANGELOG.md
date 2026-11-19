@@ -2,6 +2,11 @@
 
 All notable changes to the published packages (`@openblah/core`, `@openblah/web`, `@openblah/react-native`, `@openblah/server`). The SDK packages share one version. OpenBlah is **0.x: the API may change in any minor release.**
 
+## Unreleased
+
+- `@openblah/core` (and so both SDKs): `OpenBlahApi.startCall` and `warmup` for signed-in app users, `client.setMode`, `useRoomMode` and `mode` in the snapshot.
+- `@openblah/server`: `POST /v1/me/calls` and `POST /v1/me/warmup` (Firebase ID token).
+
 ## 0.1.0
 
 First npm release.

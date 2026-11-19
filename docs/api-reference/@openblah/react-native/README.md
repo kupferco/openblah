@@ -299,6 +299,12 @@ Re-exports [RoomParticipant](../web/interfaces/RoomParticipant.md)
 
 ---
 
+### StartedCall
+
+Re-exports [StartedCall](../web/interfaces/StartedCall.md)
+
+---
+
 ### StartMcpConnectionOptions
 
 Re-exports [StartMcpConnectionOptions](../web/interfaces/StartMcpConnectionOptions.md)
@@ -422,6 +428,12 @@ Re-exports [useRole](../web/react/functions/useRole.md)
 ### useRoom
 
 Re-exports [useRoom](../web/react/functions/useRoom.md)
+
+---
+
+### useRoomMode
+
+Re-exports [useRoomMode](../web/react/functions/useRoomMode.md)
 
 ---
 

@@ -38,6 +38,7 @@ The React hooks live in `@openblah/web/react` so the core works without React.
 - [OpenBlahClientOptions](interfaces/OpenBlahClientOptions.md)
 - [ParticipantInfo](interfaces/ParticipantInfo.md)
 - [RoomParticipant](interfaces/RoomParticipant.md)
+- [StartedCall](interfaces/StartedCall.md)
 - [StartMcpConnectionOptions](interfaces/StartMcpConnectionOptions.md)
 - [ToolApproval](interfaces/ToolApproval.md)
 - [TrialInfo](interfaces/TrialInfo.md)

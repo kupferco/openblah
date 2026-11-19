@@ -18,7 +18,7 @@ Runs after the room is left, on disconnect or a failed connect. Errors are ignor
 
 ### api?
 
-> `optional` **api?**: [`OpenBlahApiOptions`](OpenBlahApiOptions.md) \| [`OpenBlahApi`](../classes/OpenBlahApi.md)
+> `optional` **api?**: [`OpenBlahApi`](../classes/OpenBlahApi.md) \| [`OpenBlahApiOptions`](OpenBlahApiOptions.md)
 
 The OpenBlah server, for invites, consent and host controls. Pass options, or a
 ready [OpenBlahApi](../classes/OpenBlahApi.md). Without it those methods throw.

@@ -1,5 +1,15 @@
 {
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": { "outDir": "dist", "rootDir": "src", "types": ["node"] },
+  "compilerOptions": {
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "types": ["node"],
+    "allowJs": false,
+    "paths": {
+      "@openblah/core": ["../../packages/core/src/index.ts"],
+      "@openblah/core/react": ["../../packages/core/src/react.ts"],
+      "@openblah/react-native": ["../../packages/react-native/src/index.ts"]
+    }
+  },
   "include": ["src"]
 }

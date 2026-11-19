@@ -5,6 +5,11 @@ export default defineConfig({
   resolve: {
     alias: [
       {
+        // Native layer is not testable in node: the app tests use the core SDK through a shim.
+        find: /^@openblah\/react-native$/,
+        replacement: new URL("apps/app/src/test-support/sdk.ts", import.meta.url).pathname,
+      },
+      {
         find: /^@openblah\/web\/react$/,
         replacement: new URL("packages/web/src/react.ts", import.meta.url).pathname,
       },

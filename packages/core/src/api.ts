@@ -201,6 +201,14 @@ export interface CallRecord extends CallListItem {
   startedAt?: string;
 }
 
+/** Result of {@link OpenBlahApi.startCall}. `livekitUrl` is set when the server knows it. */
+export interface StartedCall {
+  roomId: string;
+  token: string;
+  expiresIn: number;
+  livekitUrl?: string;
+}
+
 export interface OpenBlahApiOptions {
   /** Server base URL including `/v1`, e.g. `https://api.example.com/v1`. */
   baseUrl: string;
@@ -235,6 +243,26 @@ export class OpenBlahApi {
   constructor(private readonly options: OpenBlahApiOptions) {
     this.base = options.baseUrl.replace(/\/+$/, "");
     this.doFetch = options.fetch ?? ((...a) => fetch(...a));
+  }
+
+  // ---- Standalone app: calls and warm-up (the `/me` endpoints, Firebase ID token in `headers`) ----
+
+  /** Start a call as the signed-in user (you are the host). Returns the room and a join token. */
+  startCall(opts: { displayName: string; agent?: "on" | "off" | "ask"; agentName?: string }) {
+    return this.call<StartedCall>("POST", "/me/calls", { body: opts, auth: true });
+  }
+
+  /** Ask the server to wake the agent worker for the signed-in user. Never throws. */
+  async warmup(): Promise<"warming" | "warm" | "unavailable" | "limited"> {
+    try {
+      const r = await this.call<{ status?: string }>("POST", "/me/warmup", {
+        body: {},
+        auth: true,
+      });
+      return r.status === "warming" || r.status === "warm" ? r.status : "unavailable";
+    } catch (e) {
+      return e instanceof OpenBlahApiError && e.status === 429 ? "limited" : "unavailable";
+    }
   }
 
   // ---- Host: invites ----
