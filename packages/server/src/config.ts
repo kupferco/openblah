@@ -9,7 +9,7 @@ import { isWhoPays, LLM_NAMES, type LlmName, type SettingsLevel } from "./settin
 import { RealLiveKit } from "./livekit.js";
 import { HttpWorkerWaker } from "./worker.js";
 import { MemoryStorage } from "./storage.js";
-import { DEFAULT_TRIAL_LIMITS, TrialService } from "./trial.js";
+import { DEFAULT_PRODUCT_TRIAL_SECONDS, DEFAULT_TRIAL_LIMITS, TrialService } from "./trial.js";
 import type { Storage } from "./types.js";
 import { DEFAULT_LIMITS, parsePrices, UsageService, webhookNotifier } from "./usage.js";
 
@@ -154,6 +154,10 @@ export function createAppFromEnv(env: Env = process.env) {
     storage,
     serverSettings,
     ...(defaultWhoPays ? { defaultWhoPays } : {}),
+    defaultProductTrialSeconds: num(
+      "OPENBLAH_PRODUCT_TRIAL_SECONDS",
+      DEFAULT_PRODUCT_TRIAL_SECONDS,
+    ),
     usage,
     livekit,
     apiKeys,

@@ -76,3 +76,51 @@ export class TrialService {
     return this.status(userId, device);
   }
 }
+
+export const DEFAULT_PRODUCT_TRIAL_SECONDS = 300;
+
+export interface ProductTrialStatus {
+  limitSeconds: number;
+  usedSeconds: number;
+  remainingSeconds: number;
+  available: boolean;
+}
+
+const productCounter = (productKeyId: string, userId: string) => `ptrial:${productKeyId}:${userId}`;
+
+/**
+ * The `product_trial` allowance: seconds of agent audio per user, counted per product (the
+ * OpenBlah trial counter above is per account and global). The allowance is read per call, so
+ * the owner can change it at any time.
+ */
+export class ProductTrialService {
+  constructor(private readonly storage: Storage) {}
+
+  async status(
+    productKeyId: string,
+    userId: string,
+    limitSeconds: number,
+  ): Promise<ProductTrialStatus> {
+    const used = await this.storage.getUsage(productCounter(productKeyId, userId));
+    const remaining = Math.max(0, limitSeconds - used);
+    return {
+      limitSeconds,
+      usedSeconds: Math.min(used, limitSeconds),
+      remainingSeconds: remaining,
+      available: remaining > 0,
+    };
+  }
+
+  /** Add seconds; seconds beyond the allowance are not counted. */
+  async record(
+    productKeyId: string,
+    userId: string,
+    seconds: number,
+    limitSeconds: number,
+  ): Promise<ProductTrialStatus> {
+    const before = await this.storage.getUsage(productCounter(productKeyId, userId));
+    const charge = Math.max(0, Math.min(seconds, limitSeconds - before));
+    if (charge > 0) await this.storage.addUsage(productCounter(productKeyId, userId), charge);
+    return this.status(productKeyId, userId, limitSeconds);
+  }
+}
