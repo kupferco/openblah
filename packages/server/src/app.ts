@@ -104,6 +104,9 @@ export interface AppDeps {
 }
 
 export const DEFAULT_INVITE_BASE_URL = "https://openblah.web.app/j";
+/** Routes a signed-in standalone-app user may call with their own ID token (see `v1.use`). */
+const USER_ROUTE =
+  /^\/(history(\/[^/]+)?|rooms\/[^/]+\/(invites(\/[^/]+)?|history-settings|consent|participants|permissions|mcp-servers|agent|agent\/(bring-in|send-out|requests\/[^/]+\/(approve|decline))))$/;
 const DEFAULT_INVITE_TTL = 24 * 60 * 60;
 const MAX_INVITE_TTL = 30 * 24 * 60 * 60;
 const MAX_INVITE_USES = 100;
@@ -172,6 +175,12 @@ export function dispatchMetadataJson(room: Room, extra: object = {}): string {
 
 /** Data topic on which the server forwards approval decisions to the agent. */
 export const APPROVAL_DECISION_TOPIC = "openblah.approval.decision";
+
+/** The saved MCP connections the host switched on for this room; `null` means all of them. */
+function enabledConnectionIds(room: Room): string[] | null {
+  const ids = room.mcp?.enabledConnectionIds;
+  return Array.isArray(ids) ? ids.filter((x): x is string => typeof x === "string") : null;
+}
 
 /** Who owns tool credentials in a room: the host and each tool's `ownerId`. */
 function toolOwners(room: Room): Set<string> {
@@ -243,8 +252,10 @@ export function createApp(deps: AppDeps): Hono {
     }
     const own = (room.mcp?.servers as { url?: unknown; ownerId?: unknown }[] | undefined) ?? [];
     const servers: unknown[] = [...own];
+    const enabled = enabledConnectionIds(room);
     for (const ownerId of owners) {
       for (const conn of await deps.mcpOAuth.connected(ownerId)) {
+        if (enabled && !enabled.includes(conn.id)) continue;
         // Host-defined servers win over a saved one for the same URL.
         if (
           own.some((s) => s.url === conn.serverUrl && (s.ownerId ?? room.hostUserId) === ownerId)
@@ -358,7 +369,33 @@ export function createApp(deps: AppDeps): Hono {
     c.json({ error: r.error, ...(r.code ? { code: r.code } : {}) }, r.status);
 
   const v1 = new Hono();
-  v1.use("*", apiKeyAuth(deps.apiKeys));
+  // Product backends use the API key. Standalone-app users may reach the routes they need
+  // (invites, history, agent control, consent, per-room tools) with their Firebase ID token, but
+  // only as themselves: every actor/user id in the request must be their own verified uid.
+  const apiKeyGate = apiKeyAuth(deps.apiKeys);
+  v1.use("*", async (c, next) => {
+    const m = /^Bearer (.+)$/i.exec(c.req.header("authorization") ?? "");
+    if (m && isValidApiKey(m[1] as string, deps.apiKeys)) return apiKeyGate(c, next);
+    const path = c.req.path.replace(/^\/v1/, "");
+    const user =
+      m && deps.verifier && USER_ROUTE.test(path)
+        ? await deps.verifier.verify(m[1] as string)
+        : null;
+    if (!user) return apiKeyGate(c, next);
+    const ids: unknown[] = ["actorUserId", "userId", "viewerUserId"].map((k) => c.req.query(k));
+    if (c.req.method !== "GET" && c.req.method !== "DELETE") {
+      const b: unknown = await c.req.raw
+        .clone()
+        .json()
+        .catch(() => null);
+      if (isRecord(b)) ids.push(b.actorUserId, b.userId, b.hostUserId);
+    }
+    const given = ids.filter((v) => v !== undefined);
+    if (given.length === 0 || given.some((v) => v !== user.uid)) {
+      return c.json({ error: "you can only act as yourself" }, 403);
+    }
+    await next();
+  });
 
   const readBody = async (c: {
     req: { json(): Promise<unknown> };
@@ -633,6 +670,34 @@ export function createApp(deps: AppDeps): Hono {
     };
     await storage.updateRoom(next);
     return c.json({ saveNotes: next.saveNotes ?? false, retention: retentionOf(next) });
+  });
+
+  // Which of the host's saved MCP servers are on in this room. Applies the next time the agent
+  // joins. `enabledConnectionIds: null` means all saved servers.
+  v1.get("/rooms/:id/mcp-servers", async (c) => {
+    const room = await loadRoom(c);
+    if (room instanceof Response) return room;
+    const role = await roleOf(c, room, actorOf(c, null));
+    if (role instanceof Response) return role;
+    return c.json({ enabledConnectionIds: enabledConnectionIds(room) });
+  });
+
+  v1.put("/rooms/:id/mcp-servers", async (c) => {
+    const body = await readBody(c);
+    if (!body) return c.json({ error: "invalid JSON body" }, 400);
+    const room = await hostRoom(c, body);
+    if (room instanceof Response) return room;
+    const ids = body.enabledConnectionIds;
+    if (ids !== null && !(Array.isArray(ids) && ids.every((x) => typeof x === "string"))) {
+      return c.json({ error: "enabledConnectionIds must be a list of ids or null" }, 400);
+    }
+    const rest = { ...room.mcp };
+    delete rest.enabledConnectionIds;
+    await storage.updateRoom({
+      ...room,
+      mcp: { ownerId: room.hostUserId, ...rest, ...(ids ? { enabledConnectionIds: ids } : {}) },
+    });
+    return c.json({ enabledConnectionIds: ids });
   });
 
   // ---- Invites ----
@@ -1653,6 +1718,13 @@ export function createApp(deps: AppDeps): Hono {
     const agentName =
       body.agentName === undefined ? defaultAgentName : str(body.agentName, MAX_NAME);
     if (!agentName) return c.json({ error: "agentName must be a non-empty string" }, 400);
+    const enabled = body.mcpConnectionIds;
+    if (
+      enabled !== undefined &&
+      !(Array.isArray(enabled) && enabled.every((x) => typeof x === "string"))
+    ) {
+      return c.json({ error: "mcpConnectionIds must be a list of ids" }, 400);
+    }
     const room: Room = {
       id: `rm_${randomBytes(12).toString("base64url")}`,
       hostUserId: uid,
@@ -1661,6 +1733,7 @@ export function createApp(deps: AppDeps): Hono {
       agentName,
       sensitive: false,
       metadata: {},
+      ...(enabled ? { mcp: { ownerId: uid, enabledConnectionIds: enabled as string[] } } : {}),
       createdAt: now().toISOString(),
       productKeyId: "standalone",
     };

@@ -216,6 +216,18 @@ What a guest should see before joining: host name, agent name and the consent te
 
 ---
 
+### getRoomMcpServers()
+
+> **getRoomMcpServers**(): `Promise`\<`string`[] \| `null`\>
+
+Which saved MCP servers are on in this room (`null` = all).
+
+#### Returns
+
+`Promise`\<`string`[] \| `null`\>
+
+---
+
 ### getSnapshot()
 
 > **getSnapshot**(): [`ClientSnapshot`](../interfaces/ClientSnapshot.md)
@@ -479,6 +491,24 @@ Turn the microphone on or off.
 #### Returns
 
 `Promise`\<`void`\>
+
+---
+
+### setRoomMcpServers()
+
+> **setRoomMcpServers**(`ids`): `Promise`\<`string`[] \| `null`\>
+
+Host: choose which saved MCP servers are on in this room. Applies when the agent next joins.
+
+#### Parameters
+
+##### ids
+
+`string`[] \| `null`
+
+#### Returns
+
+`Promise`\<`string`[] \| `null`\>
 
 ---
 

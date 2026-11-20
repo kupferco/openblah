@@ -86,6 +86,13 @@ export interface ServerState {
   calls: string[];
   bodies: Record<string, unknown>;
   agentPresent: boolean;
+  /** Saved MCP servers; a connection becomes `connected` once `consent()` is called. */
+  mcp: { id: string; serverUrl: string; name: string; status: string; createdAt: string }[];
+  mcpTest: { ok: boolean; message: string };
+  enabledMcp: string[] | null;
+  anyoneCanAdd: boolean;
+  history: Record<string, unknown>[];
+  saveNotes: boolean;
 }
 
 export function fakeServer() {
@@ -98,6 +105,12 @@ export function fakeServer() {
     calls: [],
     bodies: {},
     agentPresent: false,
+    mcp: [],
+    mcpTest: { ok: true, message: "3 tools" },
+    enabledMcp: null,
+    anyoneCanAdd: false,
+    history: [],
+    saveNotes: false,
   };
   const provider = (id: string, label: string) => {
     const missing = ["gemini", "deepgram", "cartesia"].filter((k) => !state.keys.includes(k));
@@ -159,6 +172,77 @@ export function fakeServer() {
         { roomId: "rm_1", token: "room-token", expiresIn: 600, livekitUrl: "wss://lk.test" },
         201,
       );
+    }
+    const mcpId = /^\/me\/mcp\/connections\/([^/]+)(\/test)?$/.exec(path);
+    if (path === "/me/mcp/connections" && method === "POST") {
+      const id = `c${state.mcp.length + 1}`;
+      state.mcp.push({
+        id,
+        serverUrl: String(body.url),
+        name: new URL(String(body.url)).hostname,
+        status: "pending",
+        createdAt: "2026-01-01T00:00:00Z",
+      });
+      return ok({ id, authorizationUrl: `https://auth.test/${id}` }, 201);
+    }
+    if (path === "/me/mcp/connections") return ok({ connections: state.mcp });
+    if (mcpId) {
+      const c = state.mcp.find((x) => x.id === mcpId[1]);
+      if (!c) return ok({ error: "not found" }, 404);
+      if (mcpId[2]) return ok(state.mcpTest);
+      if (method === "DELETE") {
+        state.mcp = state.mcp.filter((x) => x !== c);
+        return new Response(null, { status: 204 });
+      }
+      return ok(c);
+    }
+    if (/^\/rooms\/[^/]+\/mcp-servers$/.test(path)) {
+      if (method === "PUT") state.enabledMcp = body.enabledConnectionIds as string[] | null;
+      return ok({ enabledConnectionIds: state.enabledMcp });
+    }
+    if (/^\/rooms\/[^/]+\/invites$/.test(path)) {
+      return ok(
+        {
+          id: "inv1",
+          roomId: "rm_1",
+          token: "tok1",
+          url: "https://openblah.web.app/j/tok1",
+          expiresAt: "2026-01-02T00:00:00Z",
+          maxUses: 1,
+        },
+        201,
+      );
+    }
+    if (/^\/rooms\/[^/]+\/history-settings$/.test(path)) {
+      if (typeof body.saveNotes === "boolean") state.saveNotes = body.saveNotes;
+      return ok({ saveNotes: state.saveNotes, retention: body.retention ?? "30d" });
+    }
+    if (/^\/rooms\/[^/]+\/agent$/.test(path)) {
+      if (method === "PUT") {
+        state.anyoneCanAdd = body.anyoneCanAddAgent === true;
+        return ok({});
+      }
+      return ok({
+        agent: "on",
+        agentName: "Blah",
+        anyoneCanAddAgent: state.anyoneCanAdd,
+        idleTimeoutSeconds: 300,
+        awaitingConsent: false,
+        missing: [],
+        requests: [],
+        canControl: true,
+      });
+    }
+    if (path === "/history") return ok({ calls: state.history });
+    const hist = /^\/history\/([^/]+)$/.exec(path);
+    if (hist) {
+      const h = state.history.find((x) => x.roomId === hist[1]);
+      if (!h) return ok({ error: "history not found" }, 404);
+      if (method === "DELETE") {
+        state.history = state.history.filter((x) => x !== h);
+        return ok({ roomId: hist[1], deleted: true, existed: true });
+      }
+      return ok(h);
     }
     return ok({ error: "not found" }, 404);
   }) as unknown as typeof fetch;

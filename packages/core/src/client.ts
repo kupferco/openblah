@@ -487,6 +487,18 @@ export class OpenBlahClient {
     return this.requireApi().disconnectMcp(id, userId);
   }
 
+  /** Which saved MCP servers are on in this room (`null` = all). */
+  getRoomMcpServers(): Promise<string[] | null> {
+    const { roomId, userId } = this.requireSession();
+    return this.requireApi().getRoomMcpServers(roomId, userId);
+  }
+
+  /** Host: choose which saved MCP servers are on in this room. Applies when the agent next joins. */
+  setRoomMcpServers(ids: string[] | null): Promise<string[] | null> {
+    const { roomId, userId } = this.requireSession();
+    return this.requireApi().setRoomMcpServers(roomId, userId, ids);
+  }
+
   private requireApi(): OpenBlahApi {
     if (!this.api) throw new Error("Pass `api` to OpenBlahClient to use invites and consent");
     return this.api;
