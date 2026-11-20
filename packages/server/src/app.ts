@@ -1833,24 +1833,18 @@ export function createApp(deps: AppDeps): Hono {
     const u = await storage.getUser(c.get("uid"));
     return c.json({ id: u?.id, email: u?.email });
   });
-  // Start a call as the signed-in user: creates the room (the user is host) and returns a join token.
-  me.post("/calls", async (c) => {
-    const body = (await readBody(c)) ?? {};
-    const uid = c.get("uid");
-    const displayName = str(body.displayName, MAX_NAME);
-    if (!displayName) return c.json({ error: "displayName is required" }, 400);
-    const agent = body.agent ?? "on";
-    if (!AGENT_MODES.includes(agent as AgentMode)) {
-      return c.json({ error: "agent must be one of on, off, ask" }, 400);
-    }
-    const agentName =
-      body.agentName === undefined ? defaultAgentName : str(body.agentName, MAX_NAME);
-    if (!agentName) return c.json({ error: "agentName must be a non-empty string" }, 400);
+  /** Create a standalone call: the user is host and the agent mode is as asked. Used by /calls and the watch. */
+  async function startStandaloneCall(
+    uid: string,
+    displayName: string,
+    agent: AgentMode,
+    agentName: string,
+  ) {
     const room: Room = {
       id: `rm_${randomBytes(12).toString("base64url")}`,
       hostUserId: uid,
       hostDisplayName: displayName,
-      agent: agent as AgentMode,
+      agent,
       agentName,
       sensitive: false,
       metadata: {},
@@ -1875,6 +1869,27 @@ export function createApp(deps: AppDeps): Hono {
       role: "host",
       ttlSeconds: ttl,
     });
+    return { room, token };
+  }
+  // Start a call as the signed-in user: creates the room (the user is host) and returns a join token.
+  me.post("/calls", async (c) => {
+    const body = (await readBody(c)) ?? {};
+    const uid = c.get("uid");
+    const displayName = str(body.displayName, MAX_NAME);
+    if (!displayName) return c.json({ error: "displayName is required" }, 400);
+    const agent = body.agent ?? "on";
+    if (!AGENT_MODES.includes(agent as AgentMode)) {
+      return c.json({ error: "agent must be one of on, off, ask" }, 400);
+    }
+    const agentName =
+      body.agentName === undefined ? defaultAgentName : str(body.agentName, MAX_NAME);
+    if (!agentName) return c.json({ error: "agentName must be a non-empty string" }, 400);
+    const { room, token } = await startStandaloneCall(
+      uid,
+      displayName,
+      agent as AgentMode,
+      agentName,
+    );
     return c.json(
       {
         roomId: room.id,
@@ -1902,17 +1917,27 @@ export function createApp(deps: AppDeps): Hono {
   me.post("/watch/ticket", async (c) => {
     if (!deps.watchSecret) return c.json({ error: "not found" }, 404);
     const body = (await readBody(c)) ?? {};
-    const roomId = str(body.roomId, MAX_ID);
-    if (!roomId) return c.json({ error: "roomId is required" }, 400);
-    const member = await storage.getParticipant(roomId, c.get("uid"));
-    if (!member) return c.json({ error: "not a participant of this room" }, 403);
+    // No roomId: the watch starts a fresh call with the agent on, hosted by the signed-in user.
+    let roomId = str(body.roomId, MAX_ID);
+    let displayName: string;
+    if (roomId) {
+      const member = await storage.getParticipant(roomId, c.get("uid"));
+      if (!member) return c.json({ error: "not a participant of this room" }, 403);
+      displayName = member.displayName;
+    } else {
+      if (body.roomId !== undefined) return c.json({ error: "roomId must be a string" }, 400);
+      displayName = str(body.displayName, MAX_NAME) ?? "Watch";
+      roomId = (await startStandaloneCall(c.get("uid"), displayName, "on", defaultAgentName)).room
+        .id;
+    }
     const ticket = await signWatchTicket(deps.watchSecret, {
-      uid: member.userId,
+      uid: c.get("uid"),
       roomId,
-      displayName: member.displayName,
+      displayName,
     });
     return c.json({
       ticket,
+      roomId,
       expiresIn: 60,
       protocol: WATCH_PROTOCOL_VERSION,
       ...(deps.watchSocketUrl ? { socketUrl: deps.watchSocketUrl } : {}),

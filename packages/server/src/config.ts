@@ -8,6 +8,8 @@ import { apiKeyId, KeyStore, parseProductKeys, type ProviderKeys } from "./keys.
 import { isWhoPays, LLM_NAMES, type LlmName, type SettingsLevel } from "./settings.js";
 import { RealLiveKit } from "./livekit.js";
 import { HttpWorkerWaker } from "./worker.js";
+import { createLiveKitRoomLink } from "./watch-link.js";
+import type { WatchSocketDeps } from "./watch-socket.js";
 import { MemoryStorage } from "./storage.js";
 import { DEFAULT_PRODUCT_TRIAL_SECONDS, DEFAULT_TRIAL_LIMITS, TrialService } from "./trial.js";
 import type { Storage } from "./types.js";
@@ -23,6 +25,14 @@ function required(env: Env, name: string): string {
 
 /** Build the app from environment variables. Throws on missing config. */
 export function createAppFromEnv(env: Env = process.env) {
+  return createServerFromEnv(env).app;
+}
+
+/**
+ * The app plus, when `OPENBLAH_WATCH_SECRET` is set, what the watch WebSocket needs
+ * (attach it with `attachWatchSocket`, see main.ts). `watch` is undefined when the flag is off.
+ */
+export function createServerFromEnv(env: Env = process.env) {
   const apiKeys = parseApiKeys(env.OPENBLAH_API_KEYS);
   if (apiKeys.length === 0) throw new Error("OPENBLAH_API_KEYS must list at least one key");
   const livekitMode = env.LIVEKIT_MODE ?? "cloud";
@@ -150,7 +160,7 @@ export function createAppFromEnv(env: Env = process.env) {
     },
   });
 
-  return createApp({
+  const app = createApp({
     storage,
     serverSettings,
     ...(defaultWhoPays ? { defaultWhoPays } : {}),
@@ -178,6 +188,21 @@ export function createAppFromEnv(env: Env = process.env) {
     ...(env.OPENBLAH_INVITE_BASE_URL ? { inviteBaseUrl: env.OPENBLAH_INVITE_BASE_URL } : {}),
     ...(env.OPENBLAH_AGENT_NAME ? { agentName: env.OPENBLAH_AGENT_NAME } : {}),
   });
+
+  const watch: WatchSocketDeps | undefined = env.OPENBLAH_WATCH_SECRET
+    ? {
+        secret: env.OPENBLAH_WATCH_SECRET,
+        connect: createLiveKitRoomLink({
+          livekit,
+          livekitUrl: required(env, "LIVEKIT_URL"),
+          roleFor: async (roomId, uid) =>
+            (await storage.getParticipant(roomId, uid))?.role ?? "member",
+        }),
+        agentName: async (roomId) =>
+          (await storage.getRoom(roomId))?.agentName ?? env.OPENBLAH_AGENT_NAME ?? "Blah",
+      }
+    : undefined;
+  return { app, watch };
 }
 
 function providerKeysFrom(

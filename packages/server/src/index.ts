@@ -119,3 +119,7 @@ export type {
   WatchTicketClaims,
   WatchTransport,
 } from "./watch.js";
+export { attachWatchSocket, WATCH_SOCKET_PATH } from "./watch-socket.js";
+export type { WatchSocketDeps } from "./watch-socket.js";
+export { createLiveKitRoomLink, pcmToInt16, int16ToPcm } from "./watch-link.js";
+export { createServerFromEnv } from "./config.js";

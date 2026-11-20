@@ -6,6 +6,7 @@ All notable changes to the published packages (`@openblah/core`, `@openblah/web`
 
 - `@openblah/core` (and so both SDKs): `OpenBlahApi.startCall` and `warmup` for signed-in app users, `client.setMode`, `useRoomMode` and `mode` in the snapshot.
 - `@openblah/server`: `POST /v1/me/calls` and `POST /v1/me/warmup` (Firebase ID token).
+- `@openblah/server`: Apple Watch bridge behind `OPENBLAH_WATCH_SECRET`: WebSocket at `/v1/watch/socket`, LiveKit room link, `POST /v1/me/watch/ticket` starts a call when no `roomId` is given (see `docs/watch.md`).
 
 ## 0.1.0
 

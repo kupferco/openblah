@@ -1,0 +1,5 @@
+*.xcodeproj
+xcuserdata/
+DerivedData/
+OpenBlahWatch/Info.plist
+Complication/Info.plist
