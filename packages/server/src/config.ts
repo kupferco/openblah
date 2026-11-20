@@ -25,6 +25,9 @@ function required(env: Env, name: string): string {
 export function createAppFromEnv(env: Env = process.env) {
   const apiKeys = parseApiKeys(env.OPENBLAH_API_KEYS);
   if (apiKeys.length === 0) throw new Error("OPENBLAH_API_KEYS must list at least one key");
+  const livekitMode = env.LIVEKIT_MODE ?? "cloud";
+  if (livekitMode !== "cloud" && livekitMode !== "self_hosted")
+    throw new Error(`LIVEKIT_MODE must be "cloud" or "self_hosted", got "${livekitMode}"`);
   const livekit = new RealLiveKit({
     url: required(env, "LIVEKIT_URL"),
     apiKey: required(env, "LIVEKIT_API_KEY"),
@@ -149,6 +152,7 @@ export function createAppFromEnv(env: Env = process.env) {
       ? new HttpWorkerWaker(env.AGENT_WORKER_URL, env.AGENT_WORKER_AUTH === "iam")
       : undefined,
     livekitUrl: env.LIVEKIT_URL,
+    livekitMode,
     ...(env.OPENBLAH_INVITE_BASE_URL ? { inviteBaseUrl: env.OPENBLAH_INVITE_BASE_URL } : {}),
     ...(env.OPENBLAH_AGENT_NAME ? { agentName: env.OPENBLAH_AGENT_NAME } : {}),
   });
