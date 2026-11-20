@@ -425,4 +425,45 @@ describe("who pays", () => {
     expect(await status()).toEqual({ status: "ok" });
     expect((await call("GET", "/v1/users/u1/key-status", undefined, null)).status).toBe(401);
   });
+
+  it("product_trial counts seconds per user and product against the allowance", async () => {
+    const { call, room } = setup({ product: true });
+    await setMode(call, "product_trial");
+    await call("PUT", "/v1/product/settings", { settings: { trialSeconds: 100 } });
+    const a = await room("u1");
+    const b = await room("u2");
+    const report = (id: string, seconds: number) =>
+      Promise.resolve(call("POST", `/internal/rooms/${id}/usage`, { seconds }, AGENT)).then((r) =>
+        r.json(),
+      );
+    expect(await report(a, 60)).toMatchObject({ counted: true, remainingSeconds: 40 });
+    // Another user has their own counter.
+    expect(await report(b, 10)).toMatchObject({ usedSeconds: 10, available: true });
+    expect(await report(a, 500)).toMatchObject({
+      usedSeconds: 100,
+      available: false,
+      stop: "trial_used",
+    });
+    expect((await mode(call, a)).body).toMatchObject({ reason: "trial_used" });
+    expect((await mode(call, b)).body).toMatchObject({ mode: "product" });
+    // The owner raises the allowance: it applies at once.
+    await call("PUT", "/v1/product/settings", { settings: { trialSeconds: 300 } });
+    expect((await mode(call, a)).body).toMatchObject({ mode: "product" });
+  });
+
+  it("uses a 300 second allowance by default and validates trialSeconds", async () => {
+    const { call, room } = setup({ product: true });
+    await setMode(call, "product_trial");
+    const id = await room("u1");
+    const r = await call("POST", `/internal/rooms/${id}/usage`, { seconds: 400 }, AGENT);
+    expect(await r.json()).toMatchObject({ usedSeconds: 300, limitSeconds: 300, available: false });
+    for (const bad of [-1, 1.5, "5", 100000]) {
+      expect(
+        (await call("PUT", "/v1/product/settings", { settings: { trialSeconds: bad } })).status,
+      ).toBe(400);
+    }
+    expect(
+      (await call("PUT", "/v1/users/u1/settings", { settings: { trialSeconds: 10 } })).status,
+    ).toBe(400);
+  });
 });
