@@ -1,6 +1,6 @@
 # Spike T27: Apple Watch
 
-**Status: partly done. The server side exists and is tested. Nothing has been run on a watch yet**, because this session has no Xcode, no watch and no network access to a LiveKit server. The findings below that depend on Apple's or LiveKit's current behaviour are marked _unverified_ and are the first things to check with the steps at the end.
+**Status: partly done (T28 finished the server open items 1 and 2 below; see `docs/watch.md`). The server side exists and is tested. Nothing has been run on a watch yet**, because this session has no Xcode, no watch and no network access to a LiveKit server. The findings below that depend on Apple's or LiveKit's current behaviour are marked _unverified_ and are the first things to check with the steps at the end.
 
 ## Route chosen
 

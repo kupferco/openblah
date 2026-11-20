@@ -1,0 +1,46 @@
+# XcodeGen spec: `brew install xcodegen && xcodegen generate` creates OpenBlahWatch.xcodeproj.
+# Set SERVER_URL, FIREBASE_API_KEY and DEVELOPMENT_TEAM below (or in Xcode) before running.
+name: OpenBlahWatch
+options:
+  bundleIdPrefix: dev.openblah
+  deploymentTarget:
+    watchOS: "10.0"
+settings:
+  base:
+    SERVER_URL: https://YOUR-SERVER
+    FIREBASE_API_KEY: YOUR-FIREBASE-WEB-API-KEY
+    # DEVELOPMENT_TEAM: ABCDE12345
+targets:
+  OpenBlahWatch:
+    type: application
+    platform: watchOS
+    sources: [OpenBlahWatch]
+    info:
+      path: OpenBlahWatch/Info.plist
+      properties:
+        WKApplication: true
+        CFBundleDisplayName: OpenBlah
+        NSMicrophoneUsageDescription: Talk to the OpenBlah agent.
+        UIBackgroundModes: [audio]
+        CFBundleURLTypes:
+          - CFBundleURLSchemes: [openblah-watch]
+        OpenBlahServerURL: $(SERVER_URL)
+        OpenBlahFirebaseAPIKey: $(FIREBASE_API_KEY)
+    settings:
+      GENERATE_INFOPLIST_FILE: NO
+      PRODUCT_BUNDLE_IDENTIFIER: dev.openblah.watch
+    dependencies:
+      - target: Complication
+  Complication:
+    type: app-extension
+    platform: watchOS
+    sources: [Complication]
+    info:
+      path: Complication/Info.plist
+      properties:
+        CFBundleDisplayName: OpenBlah
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      GENERATE_INFOPLIST_FILE: NO
+      PRODUCT_BUNDLE_IDENTIFIER: dev.openblah.watch.complication

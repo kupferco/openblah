@@ -184,6 +184,21 @@ describe("POST /v1/me/watch/ticket", () => {
     expect(await verifyWatchTicket(SECRET, body.ticket)).toMatchObject({ uid: "u1", roomId });
     expect((await post("fb:u2", { roomId })).status).toBe(403);
     expect((await post("bad", { roomId })).status).toBe(401);
-    expect((await post("fb:u1", {})).status).toBe(400);
+    expect((await post("fb:u1", { roomId: 5 })).status).toBe(400);
+  });
+
+  it("starts a new call with the agent on when no room is given", async () => {
+    const { post } = setup(SECRET);
+    const r = await post("fb:u1", { displayName: "Ana" });
+    expect(r.status).toBe(200);
+    const body = (await r.json()) as { ticket: string; roomId: string };
+    expect(body.roomId).toMatch(/^rm_/);
+    expect(await verifyWatchTicket(SECRET, body.ticket)).toMatchObject({
+      uid: "u1",
+      roomId: body.roomId,
+      displayName: "Ana",
+    });
+    // The same user can then ask for a ticket to that room.
+    expect((await post("fb:u1", { roomId: body.roomId })).status).toBe(200);
   });
 });
