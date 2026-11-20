@@ -37,11 +37,11 @@ Pass your product's MCP server in the room's `mcp` object. It stays server-side 
 
 OpenBlah and its products are free and open source, so you decide who pays for the language and speech providers. Each product has a `whoPays` setting you can change at any time ([keys-and-trial.md](keys-and-trial.md)):
 
-| Mode            | Who pays                                                                       | What users see                                                         |
-| --------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
-| `user_key`      | The user's own key. The product key is never used. **Default for new products.** | On first voice start: "Add your own key to keep using voice".          |
-| `product_trial` | Your key, up to a per-user allowance (default 5 minutes, `trialSeconds`), then the user's own key. | Voice works at once, then the add-key prompt when the allowance is used. |
-| `product`       | Your key pays for everyone (set `OPENBLAH_PRODUCT_KEYS`). Good for early testing. | Nothing. Each user is capped at 60 minutes a month by default; raise or turn it off with `userMonthlyMinutes`. |
+| Mode            | Who pays                                                                                           | What users see                                                                                                 |
+| --------------- | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `user_key`      | The user's own key. The product key is never used. **Default for new products.**                   | On first voice start: "Add your own key to keep using voice".                                                  |
+| `product_trial` | Your key, up to a per-user allowance (default 5 minutes, `trialSeconds`), then the user's own key. | Voice works at once, then the add-key prompt when the allowance is used.                                       |
+| `product`       | Your key pays for everyone (set `OPENBLAH_PRODUCT_KEYS`). Good for early testing.                  | Nothing. Each user is capped at 60 minutes a month by default; raise or turn it off with `userMonthlyMinutes`. |
 
 How to switch:
 
