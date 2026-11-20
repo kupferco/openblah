@@ -1,0 +1,11 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["APPLE_TEAM_ID.dev.openblah.app"],
+        "components": [{ "/": "/j/*", "comment": "Invite links open the app if installed" }]
+      }
+    ]
+  },
+  "webcredentials": { "apps": ["APPLE_TEAM_ID.dev.openblah.app"] }
+}

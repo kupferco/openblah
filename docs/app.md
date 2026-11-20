@@ -13,7 +13,7 @@ sign in -> (onboarding, until a model can run) -> home -> consent -> call
 
 | Screen     | What it does                                                                                                                                                                 |
 | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Sign in    | Email link or Google through Firebase Auth (Q6). Sign in with Apple comes in T26.                                                                                            |
+| Sign in    | Email link or Google through Firebase Auth (Q6). Apple too in a paid-account build (T26).                                                                                    |
 | Onboarding | `useOnboarding`: pick a model (Gemini suggested first), add your own key (with a link to get a free Gemini key) or start the 5-minute trial (Q2). Shown until a model works. |
 | Home       | "Start talking": tap to start, no wake word.                                                                                                                                 |
 | Consent    | Before the call with the agent: says it is an AI and shows the data terms from the server. Accepting is also sent to the server once the call is open.                       |
@@ -52,19 +52,21 @@ Set these when starting or building (`EXPO_PUBLIC_*` values are public, never pu
 
 The server must run with `FIREBASE_PROJECT_ID` so it can verify the ID tokens.
 
-## Build on your iPhone (on a Mac)
+## Release (T26)
+
+For now the app is a **free account build**: signed with your own Apple ID in Xcode, on your own iPhone, re-signed every 7 days. TestFlight, Sign in with Apple and universal links need the paid Apple account and are off by default behind `EXPO_PUBLIC_OPENBLAH_PAID_APPLE=1`; see `docs/release-ios.md`. The email link comes back to the app through the `openblah://signin?link=...` scheme (page `hosting/public/signin/`), and `openblah://j/<token>` is read as an invite (`src/invite-link.ts`); joining from an invite is T25.
+
+## Free account build
+
+Short version (full steps in `docs/release-ios.md`):
 
 ```sh
-pnpm install
-pnpm --filter @openblah/react-native build
-cd apps/app
-npx expo prebuild
-pnpm ios        # expo run:ios --device --port 8098
-pnpm start      # later runs: the dev server on port 8098
+pnpm install && pnpm --filter @openblah/react-native build
+cd apps/app && npx expo prebuild --platform ios --clean
+open ios/OpenBlah.xcworkspace
 ```
 
-A free Apple provisioning profile is enough (7-day signing). The app uses Metro port 8098 and the
-example uses 8099, so both can sit on one Mac (see `docs/react-native.md` for why the port matters).
+In Xcode: add your Apple ID (Settings > Accounts), pick your **Personal Team** under Signing & Capabilities (automatic signing), choose your plugged-in iPhone (Developer Mode on), press Run, then trust the profile on the phone (Settings > General > VPN & Device Management). Start the dev server with `pnpm start` (port 8098; the example uses 8099, so both can sit on one Mac, see `docs/react-native.md`). After **7 days** the app stops opening: plug the phone in, open the workspace again and press Run.
 
 ## Test login
 

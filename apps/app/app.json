@@ -8,19 +8,35 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "bundleIdentifier": "dev.openblah.app",
-      "supportsTablet": false
+      "supportsTablet": false,
+      "buildNumber": "1",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
-      "package": "dev.openblah.app"
+      "package": "dev.openblah.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#4f46e5"
+      }
     },
     "plugins": [
       [
         "@openblah/react-native/plugin",
-        { "microphonePermission": "OpenBlah uses the microphone for voice calls." }
+        {
+          "microphonePermission": "OpenBlah uses the microphone for voice calls."
+        }
       ]
     ],
     "experiments": {
       "tsconfigPaths": false
+    },
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#4f46e5"
     }
   }
 }
