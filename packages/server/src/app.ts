@@ -47,6 +47,7 @@ import {
 } from "./settings.js";
 import { settingsMcpApp, type ToolOutcome } from "./settings-mcp.js";
 import type { TrialService } from "./trial.js";
+import { signWatchTicket, WATCH_PROTOCOL_VERSION } from "./watch.js";
 import { UsageService, type UsageReport } from "./usage.js";
 import type {
   AgentMode,
@@ -99,6 +100,10 @@ export interface AppDeps {
   serverSettings?: SettingsLevel;
   /** Checks a key with its vendor. Default: a free "list models" call; mocked in tests. */
   keyChecker?: KeyChecker;
+  /** Secret that signs watch tickets. Setting it turns the Apple Watch bridge on (spike T27); without it the watch endpoint answers 404. */
+  watchSecret?: string;
+  /** `wss://` URL of the watch socket returned with the ticket. */
+  watchSocketUrl?: string;
   /** Limits for the public invite endpoints. */
   joinRateLimit?: { max: number; windowMs: number };
 }
@@ -1703,6 +1708,26 @@ export function createApp(deps: AppDeps): Hono {
     const woke = await worker.wake();
     if (!woke) lastWake = 0;
     return c.json({ status: woke ? "warming" : "unavailable" });
+  });
+  // Apple Watch bridge (spike T27, behind a flag): a short-lived ticket to open the watch socket for a room the user is in.
+  me.post("/watch/ticket", async (c) => {
+    if (!deps.watchSecret) return c.json({ error: "not found" }, 404);
+    const body = (await readBody(c)) ?? {};
+    const roomId = str(body.roomId, MAX_ID);
+    if (!roomId) return c.json({ error: "roomId is required" }, 400);
+    const member = await storage.getParticipant(roomId, c.get("uid"));
+    if (!member) return c.json({ error: "not a participant of this room" }, 403);
+    const ticket = await signWatchTicket(deps.watchSecret, {
+      uid: member.userId,
+      roomId,
+      displayName: member.displayName,
+    });
+    return c.json({
+      ticket,
+      expiresIn: 60,
+      protocol: WATCH_PROTOCOL_VERSION,
+      ...(deps.watchSocketUrl ? { socketUrl: deps.watchSocketUrl } : {}),
+    });
   });
   mountKeyRoutes(me as unknown as Hono, (c) =>
     (c as unknown as { get(k: string): string }).get("uid"),

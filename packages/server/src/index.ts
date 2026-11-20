@@ -86,3 +86,21 @@ export {
   GUEST_HISTORY_DAYS,
 } from "./history.js";
 export type { CallHistory, HistoryListItem, Retention } from "./history.js";
+export {
+  WatchSession,
+  parseClientMessage,
+  signWatchTicket,
+  verifyWatchTicket,
+  WATCH_PROTOCOL_VERSION,
+  WATCH_AUDIO_SAMPLE_RATE,
+} from "./watch.js";
+export type {
+  AgentState,
+  RoomLink,
+  RoomLinkFactory,
+  RoomLinkHandlers,
+  WatchClientMessage,
+  WatchServerMessage,
+  WatchTicketClaims,
+  WatchTransport,
+} from "./watch.js";

@@ -149,6 +149,8 @@ export function createAppFromEnv(env: Env = process.env) {
       ? new HttpWorkerWaker(env.AGENT_WORKER_URL, env.AGENT_WORKER_AUTH === "iam")
       : undefined,
     livekitUrl: env.LIVEKIT_URL,
+    ...(env.OPENBLAH_WATCH_SECRET ? { watchSecret: env.OPENBLAH_WATCH_SECRET } : {}),
+    ...(env.OPENBLAH_WATCH_SOCKET_URL ? { watchSocketUrl: env.OPENBLAH_WATCH_SOCKET_URL } : {}),
     ...(env.OPENBLAH_INVITE_BASE_URL ? { inviteBaseUrl: env.OPENBLAH_INVITE_BASE_URL } : {}),
     ...(env.OPENBLAH_AGENT_NAME ? { agentName: env.OPENBLAH_AGENT_NAME } : {}),
   });
