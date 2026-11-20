@@ -39,20 +39,32 @@ budget are the source of truth.
 
 Defaults in `OPENBLAH_*` environment variables (see `.env.example`). `0` turns a limit off.
 
-| Control                     | Setting                                                                                  | Effect                                                                |
-| --------------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| Per-room max duration       | `OPENBLAH_MAX_ROOM_SECONDS` (7200); host may lower it per room with `maxDurationSeconds` | Agent stops when the session's wall-clock seconds reach it            |
-| Idle timeout                | `OPENBLAH_IDLE_TIMEOUT_SECONDS` (300); per room `idleTimeoutSeconds`                     | Agent stops after that long with nobody speaking                      |
-| Per-user monthly minutes    | `OPENBLAH_USER_MONTHLY_MINUTES` (off)                                                    | Minutes a user spent in rooms with the agent; needed for product keys |
-| Per-host monthly minutes    | `OPENBLAH_HOST_MONTHLY_MINUTES` (off)                                                    | Minutes of agent audio in rooms the host owns                         |
-| Monthly hosted-key cost cap | `OPENBLAH_MONTHLY_CAP_GBP` (50)                                                          | Stops the trial key and demo rooms at the cap (402 `trial_exhausted`) |
-| 80% warning                 | automatic at 80% of the cap; optional `OPENBLAH_ALERT_WEBHOOK_URL`                       | Once a month: a JSON log line `{"event":"cost_alert",...}` and a POST |
+| Control                     | Setting                                                                                  | Effect                                                                            |
+| --------------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Per-room max duration       | `OPENBLAH_MAX_ROOM_SECONDS` (7200); host may lower it per room with `maxDurationSeconds` | Agent stops when the session's wall-clock seconds reach it                        |
+| Idle timeout                | `OPENBLAH_IDLE_TIMEOUT_SECONDS` (300); per room `idleTimeoutSeconds`                     | Agent stops after that long with nobody speaking                                  |
+| Per-user monthly minutes    | `OPENBLAH_USER_MONTHLY_MINUTES` (off)                                                    | Minutes a user spent in rooms with the agent; needed for product keys             |
+| Per-host monthly minutes    | `OPENBLAH_HOST_MONTHLY_MINUTES` (off)                                                    | Minutes of agent audio in rooms the host owns                                     |
+| Per-product LiveKit minutes | `OPENBLAH_PRODUCT_LIVEKIT_MINUTES` (500)                                                 | Participant minutes per product per month; over it: 402 `livekit_cap`             |
+| Global LiveKit ceiling      | `OPENBLAH_LIVEKIT_MONTHLY_MINUTES` (4000, about 80% of the free plan)                    | All products together; over it: 402 `livekit_cap` for everyone                    |
+| Monthly hosted-key cost cap | `OPENBLAH_MONTHLY_CAP_GBP` (50)                                                          | Stops the trial key and demo rooms at the cap (402 `trial_exhausted`)             |
+| LiveKit 80% alert           | automatic at 80% and 100% of each LiveKit cap, same webhook                              | Once a month per cap: `{"event":"livekit_alert","scope":"global"\|"product",...}` |
+| 80% warning                 | automatic at 80% of the cap; optional `OPENBLAH_ALERT_WEBHOOK_URL`                       | Once a month: a JSON log line `{"event":"cost_alert",...}` and a POST             |
 
 How it works: the agent worker reports usage every 10 s (`POST /internal/rooms/:id/usage`). The
 server adds it to the room's usage log and the monthly counters, and answers `available: false` with
-a `stop` reason (`max_duration`, `idle_timeout`, `host_cap`, `user_cap`, `cost_cap`, `trial_used`)
+a `stop` reason (`max_duration`, `idle_timeout`, `host_cap`, `user_cap`, `cost_cap`, `livekit_cap`, `trial_used`)
 when the agent must leave. New agents are refused at start with 429 and a `code` when a monthly
 minute cap is reached. Months are UTC calendar months.
+
+**LiveKit caps.** LiveKit minutes always land on the OpenBlah server's LiveKit account, whoever pays
+for the LLM key, so they are capped per product (rooms made with a product API key; the standalone
+app is covered only by the global ceiling) and globally. Minutes are counted from the agent worker's
+participant-second reports, so plain calls with the agent off are only counted while a worker reports
+for the room. When a cap is reached, `POST /v1/tokens`, invite joins and agent start answer
+`402` `{ code: "livekit_cap", scope: "product" | "global", error }` with a plain message, and a
+running agent stops with `livekit_cap`. Calls already running are not cut by the token check. The
+defaults are placeholders until the real plan limits are checked.
 
 The **hosted** cost counter covers rooms paid by OpenBlah's own keys (trial and demo rooms). Rooms on
 a host's own keys or a product key are logged but never stopped by the £50 cap, because the owner of
