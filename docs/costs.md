@@ -86,3 +86,8 @@ hostedCostGbp, capGbp }`.
 4. Set `OPENBLAH_ALERT_WEBHOOK_URL` if you want the 80% alert somewhere other than the logs (for
    example a Slack incoming webhook), and optionally `OPENBLAH_USER_MONTHLY_MINUTES` for product-key
    deployments.
+
+## Self-hosted LiveKit
+
+With `LIVEKIT_MODE=self_hosted` the `livekitPerParticipantMinute` price no longer applies (the cost is a flat VM
+plus egress); caps stay because of capacity. See [self-host-livekit.md](self-host-livekit.md).

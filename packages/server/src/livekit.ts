@@ -46,6 +46,10 @@ export class RealLiveKit implements LiveKitGateway {
     this.dispatches = new AgentDispatchClient(httpUrl, cfg.apiKey, cfg.apiSecret);
   }
 
+  async ping(): Promise<void> {
+    await this.rooms.listRooms();
+  }
+
   async createRoom(roomId: string, metadata: string): Promise<void> {
     await this.rooms.createRoom({ name: roomId, metadata });
   }

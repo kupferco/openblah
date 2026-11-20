@@ -98,6 +98,8 @@ export interface AppDeps {
   processors?: string;
   /** LiveKit URL returned to joining guests. */
   livekitUrl?: string;
+  /** `cloud` (LiveKit Cloud, default) or `self_hosted`. Reported by `/health`; the URL decides where rooms go. */
+  livekitMode?: "cloud" | "self_hosted";
   /** The server-default level of the model setting (lowest precedence). */
   serverSettings?: SettingsLevel;
   /** Who pays for a product that has not chosen (new products: `user_key`). Unset keeps the older key order. */
@@ -281,7 +283,30 @@ export function createApp(deps: AppDeps): Hono {
   };
   const consentText = (room: Room) => renderConsentText(room.agentName, deps.processors);
 
-  app.get("/health", (c) => c.json({ ok: true }));
+  // Which LiveKit this server uses and whether it answers. A down LiveKit does not fail the
+  // probe (the server itself is fine); read `livekit.reachable`. Never exposes keys or the path.
+  app.get("/health", async (c) => {
+    let reachable: boolean | null = null;
+    if (livekit.ping) {
+      reachable = await Promise.race([
+        livekit.ping().then(
+          () => true,
+          () => false,
+        ),
+        new Promise<boolean>((r) => setTimeout(() => r(false), 3000).unref?.()),
+      ]);
+    }
+    let host: string | null = null;
+    try {
+      host = deps.livekitUrl ? new URL(deps.livekitUrl).host : null;
+    } catch {
+      /* not a URL: report nothing */
+    }
+    return c.json({
+      ok: true,
+      livekit: { mode: deps.livekitMode ?? "cloud", host, reachable },
+    });
+  });
 
   // ---- Settings: model at three levels, language, agent name (T17) ----
 
@@ -442,6 +467,7 @@ export function createApp(deps: AppDeps): Hono {
       metadata: (body.metadata as Record<string, unknown> | undefined) ?? {},
       ...(body.mcp ? { mcp: { ownerId: hostUserId, ...(body.mcp as object) } } : {}),
       createdAt: now().toISOString(),
+      ...(deps.livekitUrl ? { livekitUrl: deps.livekitUrl } : {}),
       productKeyId: apiKeyId(/^Bearer (.+)$/i.exec(c.req.header("authorization") ?? "")?.[1] ?? ""),
     };
     await storage.createRoom(room);
@@ -499,7 +525,8 @@ export function createApp(deps: AppDeps): Hono {
       role,
       ttlSeconds: ttl,
     });
-    return c.json({ token, roomId, expiresIn: ttl });
+    const url = room.livekitUrl ?? deps.livekitUrl;
+    return c.json({ token, roomId, expiresIn: ttl, ...(url ? { livekitUrl: url } : {}) });
   });
 
   // Warm-up: the client calls this when it opens, before the user taps. It only
@@ -1404,7 +1431,9 @@ export function createApp(deps: AppDeps): Hono {
       userId,
       role: "guest",
       expiresIn: ttl,
-      ...(deps.livekitUrl ? { livekitUrl: deps.livekitUrl } : {}),
+      ...((room.livekitUrl ?? deps.livekitUrl)
+        ? { livekitUrl: room.livekitUrl ?? deps.livekitUrl }
+        : {}),
     });
   });
 
@@ -1681,6 +1710,7 @@ export function createApp(deps: AppDeps): Hono {
       sensitive: false,
       metadata: {},
       createdAt: now().toISOString(),
+      ...(deps.livekitUrl ? { livekitUrl: deps.livekitUrl } : {}),
       productKeyId: "standalone",
     };
     await storage.createRoom(room);
