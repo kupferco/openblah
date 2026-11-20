@@ -201,6 +201,14 @@ describe("standalone app", () => {
     ).toHaveLength(0);
   });
 
+  it("finishes email sign-in from the openblah://signin redirect", async () => {
+    const link = "https://openblah.web.app/signin/?oobCode=c&mode=signIn";
+    linking.initial = `openblah://signin?link=${encodeURIComponent(link)}`;
+    const { auth } = mount();
+    await flush();
+    expect(auth.completeEmailLink).toHaveBeenCalledWith(link);
+  });
+
   it("recognises an invite universal link instead of treating it as a sign-in link", async () => {
     linking.initial = "https://openblah.web.app/j/abcDEF123456";
     const { r, emit, server, auth } = mount();

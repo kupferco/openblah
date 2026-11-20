@@ -6,7 +6,7 @@ export interface AuthUser {
 }
 
 /**
- * Sign-in for the app itself (Q6: email link, Google, and Apple on iOS). The screens only know this
+ * Sign-in for the app itself (Q6: email link, Google, and Apple on iOS in a paid-account build). The screens only know this
  * interface; `firebase.ts` is the real implementation and tests use a fake.
  */
 export interface AuthService {
@@ -19,7 +19,7 @@ export interface AuthService {
   signInWithGoogle(): Promise<void>;
   /** Sign in with Apple (iOS only; the App Store requires it next to Google, T26). */
   signInWithApple(): Promise<void>;
-  /** Whether Sign in with Apple can run on this device. */
+  /** Whether Sign in with Apple can run: false unless the paid-account flag is on (T26). */
   appleAvailable(): Promise<boolean>;
   signOut(): Promise<void>;
   /** A fresh ID token for the OpenBlah server's `/v1/me` endpoints. */

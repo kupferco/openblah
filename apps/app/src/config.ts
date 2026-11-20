@@ -14,6 +14,16 @@ export const config = {
   },
   /** Google OAuth client id (iOS) for "Continue with Google". */
   googleClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ?? "",
-  /** Where the email link opens the app: needs to be an authorised Firebase domain. */
-  emailLinkUrl: process.env.EXPO_PUBLIC_EMAIL_LINK_URL ?? "",
+  /**
+   * Where the email link goes after Firebase checks it: an authorised Firebase domain. The free
+   * build uses the hosted page `https://openblah.web.app/signin/`, which hands the link to the app
+   * through the `openblah://` scheme.
+   */
+  emailLinkUrl: process.env.EXPO_PUBLIC_EMAIL_LINK_URL ?? "https://openblah.web.app/signin/",
+  /**
+   * Features that need the paid Apple Developer Program (Sign in with Apple, universal links).
+   * Off by default: the free-account build cannot sign them. Set `EXPO_PUBLIC_OPENBLAH_PAID_APPLE=1`
+   * for both the build (`app.config.js`) and the JS bundle.
+   */
+  paidApple: process.env.EXPO_PUBLIC_OPENBLAH_PAID_APPLE === "1",
 };

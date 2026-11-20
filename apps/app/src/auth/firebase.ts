@@ -1,4 +1,3 @@
-import * as AppleAuthentication from "expo-apple-authentication";
 import * as Crypto from "expo-crypto";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as WebBrowser from "expo-web-browser";
@@ -55,9 +54,12 @@ export function createFirebaseAuth(): AuthService {
       await signInWithCredential(auth, GoogleAuthProvider.credential(result));
     },
     async appleAvailable() {
-      return AppleAuthentication.isAvailableAsync();
+      if (!config.paidApple) return false;
+      return (await import("expo-apple-authentication")).isAvailableAsync();
     },
     async signInWithApple() {
+      if (!config.paidApple) throw new Error("Sign in with Apple needs the paid Apple account");
+      const AppleAuthentication = await import("expo-apple-authentication");
       // Firebase wants the raw nonce; Apple gets its SHA-256 hash.
       const nonce = Crypto.randomUUID();
       const hashed = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, nonce);

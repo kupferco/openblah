@@ -9,8 +9,6 @@
     "ios": {
       "bundleIdentifier": "dev.openblah.app",
       "supportsTablet": false,
-      "associatedDomains": ["applinks:openblah.web.app", "webcredentials:openblah.web.app"],
-      "usesAppleSignIn": true,
       "buildNumber": "1",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
@@ -21,24 +19,9 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#4f46e5"
-      },
-      "intentFilters": [
-        {
-          "action": "VIEW",
-          "autoVerify": true,
-          "data": [
-            {
-              "scheme": "https",
-              "host": "openblah.web.app",
-              "pathPrefix": "/j/"
-            }
-          ],
-          "category": ["BROWSABLE", "DEFAULT"]
-        }
-      ]
+      }
     },
     "plugins": [
-      "expo-apple-authentication",
       [
         "@openblah/react-native/plugin",
         {

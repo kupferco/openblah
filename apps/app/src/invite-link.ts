@@ -19,3 +19,15 @@ export function parseInviteLink(url: string): string | null {
   const t = /^j\/([A-Za-z0-9_-]{8,128})\/?(?:[?#].*)?$/.exec(path);
   return t ? t[1]! : null;
 }
+
+/**
+ * The Firebase email link inside an `openblah://signin?link=<encoded link>` URL, or null. The
+ * hosted page `/signin/` builds it (hosting/public/signin/index.html) because the free-account
+ * build has no universal links.
+ */
+export function parseSignInRedirect(url: string): string | null {
+  const m = /^openblah:\/\/signin\/?\?(.*)$/i.exec(url.trim());
+  if (!m) return null;
+  const link = new URLSearchParams(m[1]!.split("#")[0]).get("link");
+  return link && /^https:\/\//i.test(link) ? link : null;
+}
