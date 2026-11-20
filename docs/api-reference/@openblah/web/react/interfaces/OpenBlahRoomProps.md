@@ -46,6 +46,20 @@ Parts to leave out. To replace a part, hide it and render your own with the hook
 
 ---
 
+### keyRequired?
+
+> `optional` **keyRequired?**: \{ `reason?`: `"product_not_paying"` \| `"trial_used"`; \} \| `null`
+
+Set when the product does not pay for this user's voice (a `KeyRequiredError` from starting
+the call, or `useKeyStatus` saying `needs_key`). The room then shows "Add your own key to
+keep using voice" with a button, instead of an error.
+
+#### Inherited from
+
+[`OpenBlahRoomBaseProps`](OpenBlahRoomBaseProps.md).[`keyRequired`](OpenBlahRoomBaseProps.md#keyrequired)
+
+---
+
 ### labels?
 
 > `optional` **labels?**: `Partial`\<[`OpenBlahLabels`](OpenBlahLabels.md)\>
@@ -55,6 +69,22 @@ Partial labels, merged over [defaultLabels](../variables/defaultLabels.md).
 #### Inherited from
 
 [`OpenBlahRoomBaseProps`](OpenBlahRoomBaseProps.md).[`labels`](OpenBlahRoomBaseProps.md#labels)
+
+---
+
+### onAddKey?
+
+> `optional` **onAddKey?**: () => `void`
+
+The user tapped "Add your key": open your add-key sheet (`<OpenBlahAddKeySheet />`).
+
+#### Returns
+
+`void`
+
+#### Inherited from
+
+[`OpenBlahRoomBaseProps`](OpenBlahRoomBaseProps.md).[`onAddKey`](OpenBlahRoomBaseProps.md#onaddkey)
 
 ---
 

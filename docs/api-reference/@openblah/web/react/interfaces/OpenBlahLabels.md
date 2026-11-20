@@ -4,6 +4,14 @@ Every piece of text in `<OpenBlahRoom />`, for translation or rewording.
 
 ## Properties
 
+### addKey
+
+> **addKey**: `string`
+
+Button that opens the add-key sheet.
+
+---
+
 ### agent
 
 > **agent**: `string`
@@ -103,6 +111,20 @@ Every piece of text in `<OpenBlahRoom />`, for translation or rewording.
 ### joining
 
 > **joining**: `string`
+
+---
+
+### keyRequired
+
+> **keyRequired**: `string`
+
+Shown when the product does not pay for voice and the user needs their own key.
+
+---
+
+### keyRequiredTrialUsed
+
+> **keyRequiredTrialUsed**: `string`
 
 ---
 
