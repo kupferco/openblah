@@ -33,15 +33,33 @@ Pass your product's MCP server in the room's `mcp` object. It stays server-side 
 - Tools that change things (book, send, pay) need the owner's confirmation. The component shows them as cards (`useToolApprovals`); the owner can also say yes out loud. Only the owner of the credentials can confirm. Details in [tools.md](tools.md).
 - No MCP server? Use webhook tools (signed callbacks), also in [tools.md](tools.md).
 
-## Product key or bring your own key
+## Who pays: choose a mode
 
-Who pays for the language and speech providers, in this order ([keys-and-trial.md](keys-and-trial.md)):
+OpenBlah and its products are free and open source, so you decide who pays for the language and speech providers. Each product has a `whoPays` setting you can change at any time ([keys-and-trial.md](keys-and-trial.md)):
 
-1. **BYOK**: the host user saves their own keys; their key pays in a group room.
-2. **Product key** (embedded): you set provider keys for your API key (`OPENBLAH_PRODUCT_KEYS`). Your users never see keys. You pay, so plan per-user minute caps ([api.md](api.md), usage and limits).
-3. **Trial**: OpenBlah's hosted key, for signed-in accounts only, a few minutes.
+| Mode            | Who pays                                                                       | What users see                                                         |
+| --------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
+| `user_key`      | The user's own key. The product key is never used. **Default for new products.** | On first voice start: "Add your own key to keep using voice".          |
+| `product_trial` | Your key, up to a per-user allowance (default 5 minutes, `trialSeconds`), then the user's own key. | Voice works at once, then the add-key prompt when the allowance is used. |
+| `product`       | Your key pays for everyone (set `OPENBLAH_PRODUCT_KEYS`). Good for early testing. | Nothing. Each user is capped at 60 minutes a month by default; raise or turn it off with `userMonthlyMinutes`. |
 
-Self-hosting is the product-key mode with your own server.
+How to switch:
+
+- **Screen:** open `/owner` on the server, paste the product API key, pick the mode and save.
+- **REST:** `PUT /v1/product/settings` with `{ "settings": { "whoPays": "user_key" } }` (product API key only).
+- **Settings MCP tool:** `propose_settings_change` then `confirm_settings_change`, only with the product's key, never from an end user's voice session. See [model-settings.md](model-settings.md).
+
+What happens on a switch:
+
+- The change applies to the next voice start. Calls already running finish (up to the room's max duration). Text chat and the rest of your product are unaffected.
+- A user who is not covered gets `402 key_required` (`reason`: `product_not_paying` or `trial_used`). The SDKs throw a typed `KeyRequiredError`; pass it to `<OpenBlahRoom keyRequired onAddKey />` and open `<OpenBlahAddKeySheet />` (Gemini first, then OpenAI and Claude). The sheet tells users that consumer subscriptions (ChatGPT Plus, Claude app, Gemini app) cannot power another app, so an API key is needed; a free Gemini key is the easy start. Free-tier keys are refused in `sensitive` rooms.
+- To show the banner before the user taps, call `GET /v1/users/:userId/key-status` (`ok` or `needs_key`; `api.getKeyStatus`, `useKeyStatus`).
+- Switching back to `product` is instant. Saved user keys stay stored and are simply not used; users can delete them. Keys are per product and user.
+- The owner screen shows counts only (never names or keys): users with their own key, users asked for a key in the last 30 days, and minutes used on your key. Test users are left out.
+
+LiveKit call minutes always land on the OpenBlah server's LiveKit account, in every mode, whoever pays for the LLM key. They are capped per product and globally (`402 livekit_cap`); see [costs.md](costs.md).
+
+Self-hosting is the `product` mode with your own server.
 
 A worked example for a first embedded product: [integrations/housekeeper.md](integrations/housekeeper.md).
 
