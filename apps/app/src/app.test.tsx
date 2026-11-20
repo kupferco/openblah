@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, create, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
 import { createElement } from "react";
 import { AppRoot } from "./AppRoot.js";
-import { appState } from "./test-support/react-native.js";
+import { appState, linking } from "./test-support/react-native.js";
 import { fakeAuth, fakePrefs, fakeServer } from "./test-support/server.js";
 
 vi.mock("react-native", () => import("./test-support/react-native.js"));
@@ -53,7 +53,11 @@ function mount() {
   return { r, auth, emit, prefs, server };
 }
 
-beforeEach(() => appState.handlers.clear());
+beforeEach(() => {
+  appState.handlers.clear();
+  linking.handlers.clear();
+  linking.initial = null;
+});
 
 describe("standalone app", () => {
   it("shows sign-in when signed out and emails a link", async () => {
@@ -160,5 +164,50 @@ describe("standalone app", () => {
     await press(r, "Not now");
     expect(texts(r)).toContain("Hi Ana");
     expect(server.state.calls).not.toContain("POST /me/calls");
+  });
+
+  it("offers Sign in with Apple and signs in with it", async () => {
+    const { r, auth } = mount();
+    await flush();
+    await press(r, "Continue with Apple");
+    expect(auth.signInWithApple).toHaveBeenCalled();
+    await flush();
+    expect(texts(r)).toContain("Set up your assistant");
+  });
+
+  it("hides Sign in with Apple where it is not available", async () => {
+    const { auth } = fakeAuth();
+    vi.mocked(auth.appleAvailable).mockResolvedValue(false);
+    let r!: ReactTestRenderer;
+    const server = fakeServer();
+    act(() => {
+      r = create(
+        createElement(AppRoot, {
+          auth,
+          api: server.api,
+          client: server.client,
+          prefs: fakePrefs(),
+        }),
+      );
+    });
+    await flush();
+    expect(texts(r)).toContain("Sign in to OpenBlah");
+    expect(
+      r.root.findAll(
+        (n) =>
+          (n.type as unknown) === "Pressable" &&
+          n.props.accessibilityLabel === "Continue with Apple",
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("recognises an invite universal link instead of treating it as a sign-in link", async () => {
+    linking.initial = "https://openblah.web.app/j/abcDEF123456";
+    const { r, emit, server, auth } = mount();
+    server.state.usable = true;
+    emit({ uid: "u1", email: "ana@example.com", displayName: "Ana" });
+    await flush();
+    expect(texts(r).join(" ")).toContain("You opened an invite link");
+    expect(auth.completeEmailLink).not.toHaveBeenCalled();
   });
 });

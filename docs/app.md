@@ -13,7 +13,7 @@ sign in -> (onboarding, until a model can run) -> home -> consent -> call
 
 | Screen     | What it does                                                                                                                                                                 |
 | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Sign in    | Email link or Google through Firebase Auth (Q6). Sign in with Apple comes in T26.                                                                                            |
+| Sign in    | Email link, Google or (on iOS) Apple through Firebase Auth (Q6, T26).                                                                                                        |
 | Onboarding | `useOnboarding`: pick a model (Gemini suggested first), add your own key (with a link to get a free Gemini key) or start the 5-minute trial (Q2). Shown until a model works. |
 | Home       | "Start talking": tap to start, no wake word.                                                                                                                                 |
 | Consent    | Before the call with the agent: says it is an AI and shows the data terms from the server. Accepting is also sent to the server once the call is open.                       |
@@ -51,6 +51,10 @@ Set these when starting or building (`EXPO_PUBLIC_*` values are public, never pu
 | `EXPO_PUBLIC_EMAIL_LINK_URL`                                             | An authorised Firebase domain URL the email link opens                                  |
 
 The server must run with `FIREBASE_PROJECT_ID` so it can verify the ID tokens.
+
+## Release (T26)
+
+TestFlight, the Associated Domains entitlement and the `/j/<token>` universal link (AASA file on Firebase Hosting) are in `docs/release-ios.md`. The app reads an invite link (`src/invite-link.ts`) and tells the person it arrived; joining from an invite is T25. Sign in with Apple needs a paid account and the Apple provider enabled in Firebase.
 
 ## Build on your iPhone (on a Mac)
 
