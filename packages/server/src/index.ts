@@ -78,6 +78,8 @@ export {
 } from "./usage.js";
 export type {
   CostAlert,
+  LivekitAlert,
+  UsageAlert,
   CostBreakdown,
   PriceTable,
   RoomUsage,

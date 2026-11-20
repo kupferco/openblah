@@ -70,11 +70,11 @@ Sends the agent into the room. 409 if the room's agent is `off`, or if any curre
 
 ## Usage and limits (T20)
 
-| Method and path                         | Who  | Notes                                                                                                                                                                                 |
-| --------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /rooms/:id/usage?actorUserId=`     | host | Read-only usage log: participant minutes, STT seconds per track, TTS characters, LLM tokens, estimated GBP cost per provider, effective limits, monthly minutes. See `docs/costs.md`. |
-| `POST /rooms` with `maxDurationSeconds` | any  | Optional, and `idleTimeoutSeconds`: integers 1 to 86400 that lower the server defaults for this room.                                                                                 |
-| `POST /rooms/:id/agent`                 | any  | 429 with `code` `host_cap` or `user_cap` when a monthly minute cap is reached.                                                                                                        |
+| Method and path                         | Who  | Notes                                                                                                                                                                                         |
+| --------------------------------------- | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /rooms/:id/usage?actorUserId=`     | host | Read-only usage log: participant minutes, STT seconds per track, TTS characters, LLM tokens, estimated GBP cost per provider, effective limits, monthly minutes. See `docs/costs.md`.         |
+| `POST /rooms` with `maxDurationSeconds` | any  | Optional, and `idleTimeoutSeconds`: integers 1 to 86400 that lower the server defaults for this room.                                                                                         |
+| `POST /rooms/:id/agent`                 | any  | 429 with `code` `host_cap` or `user_cap` when a monthly minute cap is reached. 402 `livekit_cap` when the product or server LiveKit cap is reached (also on `POST /tokens` and invite joins). |
 
 ## Guest rights
 
