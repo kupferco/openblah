@@ -258,8 +258,14 @@ export class UsageService {
   }
 
   /** Check the monthly minute caps before an agent starts. Null when allowed. */
-  async checkStart(room: Room, participantIds: readonly string[]): Promise<StopReason | null> {
-    const { hostMonthlyMinutes, userMonthlyMinutes } = this.limits;
+  async checkStart(
+    room: Room,
+    participantIds: readonly string[],
+    /** A product's own per-user cap (0 = off); overrides the server's. */
+    userCap?: number,
+  ): Promise<StopReason | null> {
+    const { hostMonthlyMinutes } = this.limits;
+    const userMonthlyMinutes = userCap ?? this.limits.userMonthlyMinutes;
     if (
       hostMonthlyMinutes > 0 &&
       (await this.hostMinutesThisMonth(room.hostUserId)) >= hostMonthlyMinutes
@@ -291,7 +297,9 @@ export class UsageService {
     room: Room,
     report: UsageReport,
     hosted: boolean,
+    userCap?: number,
   ): Promise<{ available: boolean; stop?: StopReason }> {
+    const userMonthlyMinutes = userCap ?? this.limits.userMonthlyMinutes;
     const s = this.storage;
     const rk = this.roomKey(room.id);
     const month = this.month();
@@ -347,9 +355,9 @@ export class UsageService {
       (await this.hostMinutesThisMonth(room.hostUserId)) >= this.limits.hostMonthlyMinutes
     )
       stop = "host_cap";
-    else if (this.limits.userMonthlyMinutes > 0) {
+    else if (userMonthlyMinutes > 0) {
       for (const user of Object.keys(participantSeconds)) {
-        if ((await this.userMinutesThisMonth(user)) >= this.limits.userMonthlyMinutes) {
+        if ((await this.userMinutesThisMonth(user)) >= userMonthlyMinutes) {
           stop = "user_cap";
           break;
         }

@@ -31,10 +31,15 @@ import {
   type CallHistory,
   type TranscriptLine,
 } from "./history.js";
+import { OWNER_PAGE_CSP, OWNER_PAGE_HTML } from "./owner-page.js";
 import { RateLimiter } from "./ratelimit.js";
+import { DEFAULT_PRODUCT_USER_MINUTES, ProductStatsService } from "./product-stats.js";
 import {
   applyPatch,
+  applyProductPatch,
   ConfirmationSigner,
+  isProductPatch,
+  isRoomPatch,
   describePatch,
   GEMINI_KEY_URL,
   llmLabel,
@@ -48,7 +53,7 @@ import {
   type WhoPays,
   type SettingsPatch,
 } from "./settings.js";
-import { settingsMcpApp, type ToolOutcome } from "./settings-mcp.js";
+import { settingsMcpApp, type SettingsToolOps, type ToolOutcome } from "./settings-mcp.js";
 import { DEFAULT_PRODUCT_TRIAL_SECONDS, ProductTrialService, type TrialService } from "./trial.js";
 import { UsageService, type UsageReport } from "./usage.js";
 import type {
@@ -225,7 +230,16 @@ export function createApp(deps: AppDeps): Hono {
         deps.defaultWhoPays ??
         null)
       : null;
-  const resolve = async (room: Room) =>
+  const stats = new ProductStatsService(storage, deps.keyStore ?? null, now);
+  const resolve = async (room: Room) => {
+    const r = await resolveWithMode(room);
+    // Count who was asked for a key, per product (a person once a day, never their name).
+    if (!r.ok && r.code === "key_required" && room.productKeyId) {
+      await stats.keyRequired(room.productKeyId, room.hostUserId).catch(() => undefined);
+    }
+    return r;
+  };
+  const resolveWithMode = async (room: Room) =>
     resolveRoomKeys(
       {
         storage,
@@ -306,6 +320,16 @@ export function createApp(deps: AppDeps): Hono {
 
   // Which LiveKit this server uses and whether it answers. A down LiveKit does not fail the
   // probe (the server itself is fine); read `livekit.reachable`. Never exposes keys or the path.
+  // The owner settings screen: a static page; the product key is typed in and never stored.
+  app.get("/owner", (c) =>
+    c.body(OWNER_PAGE_HTML, 200, {
+      "content-type": "text/html; charset=utf-8",
+      "content-security-policy": OWNER_PAGE_CSP,
+      "cache-control": "no-store",
+      "referrer-policy": "no-referrer",
+    }),
+  );
+
   app.get("/health", async (c) => {
     let reachable: boolean | null = null;
     if (livekit.ping) {
@@ -353,8 +377,43 @@ export function createApp(deps: AppDeps): Hono {
     server: deps.serverSettings ?? null,
   });
 
+  /** The mode that applies to a product: its setting, else the server default. Null = not chosen. */
+  const effectiveWhoPays = (level: SettingsLevel | null): WhoPays | null =>
+    level?.whoPays ?? deps.defaultWhoPays ?? null;
+
+  /**
+   * Per-user monthly minutes for a product's rooms: its own setting (0 = off); else 60 while the
+   * product pays (Q3); else the server's cap. Undefined = the server's cap.
+   */
+  const productUserCap = async (room: Room): Promise<number | undefined> => {
+    if (!room.productKeyId) return undefined;
+    const level = await storage.getSettings(`product:${room.productKeyId}`);
+    if (level?.userMonthlyMinutes !== undefined) return level.userMonthlyMinutes;
+    return effectiveWhoPays(level) === "product" ? DEFAULT_PRODUCT_USER_MINUTES : undefined;
+  };
+
+  /** What the product owner sees: the mode, the cap and counts only (never names or keys). */
+  const ownerView = async (productKeyId: string) => {
+    const level = await storage.getSettings(`product:${productKeyId}`);
+    const whoPays = effectiveWhoPays(level);
+    const cap =
+      level?.userMonthlyMinutes ??
+      (whoPays === "product" ? DEFAULT_PRODUCT_USER_MINUTES : usage.limits.userMonthlyMinutes);
+    return {
+      whoPays,
+      userMonthlyMinutes: cap > 0 ? cap : null,
+      ...(await stats.summary(productKeyId)),
+    };
+  };
+
   /** The effective settings plus each level, for settings screens and the agent. */
-  const settingsView = async (o: { room?: Room; userId?: string; productKeyId?: string }) => {
+  const settingsView = async (o: {
+    room?: Room;
+    userId?: string;
+    productKeyId?: string;
+    /** The caller holds this product's API key: add the owner block. */
+    owner?: boolean;
+  }) => {
     const levels = await levelsFor(o);
     const { choice, source } = resolveModel(levels);
     const usable = await llmUsable(keyUsability, choice.provider, {
@@ -368,6 +427,7 @@ export function createApp(deps: AppDeps): Hono {
       ...(usable.ok ? { keyMode: usable.mode } : { problem: usable.message }),
       language: resolveLanguage(levels) ?? "auto",
       ...(o.room ? { agentName: o.room.agentName } : {}),
+      ...(o.owner && o.productKeyId ? { product: await ownerView(o.productKeyId) } : {}),
       levels: {
         ...(o.room ? { room: levels.room ?? null } : {}),
         user: levels.user ?? null,
@@ -409,6 +469,11 @@ export function createApp(deps: AppDeps): Hono {
       });
       if (!u.ok) return { ok: false, status: 409, error: u.message, code: u.code };
     }
+    if (isProductPatch(patch) && room.productKeyId) {
+      const id = `product:${room.productKeyId}`;
+      await storage.putSettings(id, applyProductPatch(await storage.getSettings(id), patch));
+    }
+    if (!isRoomPatch(patch)) return { ok: true, room };
     const updated: Room = {
       ...room,
       ...(patch.agentName ? { agentName: patch.agentName } : {}),
@@ -492,6 +557,7 @@ export function createApp(deps: AppDeps): Hono {
       productKeyId: apiKeyId(/^Bearer (.+)$/i.exec(c.req.header("authorization") ?? "")?.[1] ?? ""),
     };
     await storage.createRoom(room);
+    if (room.productKeyId) await stats.seeUser(room.productKeyId, hostUserId);
     await livekit.createRoom(room.id, roomMetadataJson(room));
     await storage.saveParticipant({
       roomId: room.id,
@@ -879,7 +945,7 @@ export function createApp(deps: AppDeps): Hono {
 
   // Product level: the default for every user of this API key.
   v1.get("/product/settings", async (c) =>
-    c.json(await settingsView({ productKeyId: keyIdOf(c) })),
+    c.json(await settingsView({ productKeyId: keyIdOf(c), owner: true })),
   );
   v1.put("/product/settings", async (c) => {
     const body = await readBody(c);
@@ -893,9 +959,9 @@ export function createApp(deps: AppDeps): Hono {
     }
     await storage.putSettings(
       `product:${pid}`,
-      applyPatch(await storage.getSettings(`product:${pid}`), parsed.patch),
+      applyProductPatch(await storage.getSettings(`product:${pid}`), parsed.patch),
     );
-    return c.json(await settingsView({ productKeyId: pid }));
+    return c.json(await settingsView({ productKeyId: pid, owner: true }));
   });
 
   // The settings MCP server. The agent worker or a host backend may call it; both are trusted
@@ -913,81 +979,102 @@ export function createApp(deps: AppDeps): Hono {
     if (!isHost && (!p || p.removedAt)) return { error: "not a participant of this room" };
     return { room, isHost };
   };
-  const settingsOps = {
-    async get({ roomId, actorUserId }: { roomId: string; actorUserId: string }) {
-      const r = await mcpRoom(roomId, actorUserId);
-      if ("error" in r) return { text: r.error, isError: true };
-      return asText(
-        await settingsView({
-          room: r.room,
-          userId: r.room.hostUserId,
-          productKeyId: r.room.productKeyId,
-        }),
-      );
-    },
-    async propose({
-      roomId,
-      actorUserId,
-      change,
-    }: {
-      roomId: string;
-      actorUserId: string;
-      change: Record<string, unknown>;
-    }) {
-      const r = await mcpRoom(roomId, actorUserId);
-      if ("error" in r) return { text: r.error, isError: true };
-      if (!r.isHost) return { text: "only the host can change settings", isError: true };
-      const parsed = parsePatch(change, { roomLevel: true });
-      if (!parsed.ok) return { text: parsed.error, isError: true };
-      if (parsed.patch.llm) {
-        const u = await llmUsable(keyUsability, parsed.patch.llm.provider, {
-          ownerId: r.room.hostUserId,
-          productKeyId: r.room.productKeyId,
+  /**
+   * The tools for one caller. `bearer` is their token: only a product API key that made the
+   * room is the product owner. The agent worker (and so an end user) never is.
+   */
+  const settingsOpsFor = (bearer: string): SettingsToolOps => {
+    const ownsRoom = (room: Room) =>
+      isValidApiKey(bearer, deps.apiKeys) &&
+      !!room.productKeyId &&
+      apiKeyId(bearer) === room.productKeyId;
+    return {
+      async get({ roomId, actorUserId }: { roomId: string; actorUserId: string }) {
+        const r = await mcpRoom(roomId, actorUserId);
+        if ("error" in r) return { text: r.error, isError: true };
+        return asText(
+          await settingsView({
+            room: r.room,
+            userId: r.room.hostUserId,
+            productKeyId: r.room.productKeyId,
+            owner: ownsRoom(r.room),
+          }),
+        );
+      },
+      async propose({
+        roomId,
+        actorUserId,
+        change,
+      }: {
+        roomId: string;
+        actorUserId: string;
+        change: Record<string, unknown>;
+      }) {
+        const r = await mcpRoom(roomId, actorUserId);
+        if ("error" in r) return { text: r.error, isError: true };
+        const owner = ownsRoom(r.room);
+        const parsed = parsePatch(change, { roomLevel: true, productLevel: owner });
+        if (!parsed.ok) return { text: parsed.error, isError: true };
+        if (isRoomPatch(parsed.patch) && !r.isHost) {
+          return { text: "only the host can change settings", isError: true };
+        }
+        if (parsed.patch.llm) {
+          const u = await llmUsable(keyUsability, parsed.patch.llm.provider, {
+            ownerId: r.room.hostUserId,
+            productKeyId: r.room.productKeyId,
+          });
+          if (!u.ok) return { text: u.message, isError: true };
+        }
+        const { token, expiresAt } = signer.sign(
+          { roomId, actor: actorUserId, patch: parsed.patch },
+          now().getTime(),
+        );
+        const question = `Do you want me to ${describePatch(parsed.patch)}?`;
+        return asText({
+          status: "needs_confirmation",
+          question,
+          confirmationToken: token,
+          expiresAt,
+          note: "Nothing has changed yet. Ask the question out loud and only apply it after a yes.",
         });
-        if (!u.ok) return { text: u.message, isError: true };
-      }
-      const { token, expiresAt } = signer.sign(
-        { roomId, actor: actorUserId, patch: parsed.patch },
-        now().getTime(),
-      );
-      const question = `Do you want me to ${describePatch(parsed.patch)}?`;
-      return asText({
-        status: "needs_confirmation",
-        question,
-        confirmationToken: token,
-        expiresAt,
-        note: "Nothing has changed yet. Ask the question out loud and only apply it after a yes.",
-      });
-    },
-    async confirm({
-      roomId,
-      actorUserId,
-      confirmationToken,
-    }: {
-      roomId: string;
-      actorUserId: string;
-      confirmationToken: string;
-    }) {
-      const pending = signer.open(confirmationToken, now().getTime());
-      if (!pending || pending.roomId !== roomId || pending.actor !== actorUserId) {
-        return {
-          text: "that confirmation is not valid or has expired; propose the change again",
-          isError: true,
-        };
-      }
-      const r = await mcpRoom(roomId, actorUserId);
-      if ("error" in r) return { text: r.error, isError: true };
-      if (!r.isHost) return { text: "only the host can change settings", isError: true };
-      const applied = await applyRoomPatch(r.room, pending.patch);
-      if (!applied.ok) return { text: applied.error, isError: true };
-      return asText({
-        status: "changed",
-        changed: describePatch(pending.patch),
-        note: pending.patch.llm
-          ? "A model change applies the next time the agent joins the call."
-          : undefined,
-      });
-    },
+      },
+      async confirm({
+        roomId,
+        actorUserId,
+        confirmationToken,
+      }: {
+        roomId: string;
+        actorUserId: string;
+        confirmationToken: string;
+      }) {
+        const pending = signer.open(confirmationToken, now().getTime());
+        if (!pending || pending.roomId !== roomId || pending.actor !== actorUserId) {
+          return {
+            text: "that confirmation is not valid or has expired; propose the change again",
+            isError: true,
+          };
+        }
+        const r = await mcpRoom(roomId, actorUserId);
+        if ("error" in r) return { text: r.error, isError: true };
+        if (isRoomPatch(pending.patch) && !r.isHost) {
+          return { text: "only the host can change settings", isError: true };
+        }
+        if (isProductPatch(pending.patch) && !ownsRoom(r.room)) {
+          return { text: "only the product owner can change who pays", isError: true };
+        }
+        const applied = await applyRoomPatch(r.room, pending.patch);
+        if (!applied.ok) return { text: applied.error, isError: true };
+        return asText({
+          status: "changed",
+          changed: describePatch(pending.patch),
+          note: pending.patch.llm
+            ? "A model change applies the next time the agent joins the call."
+            : isProductPatch(pending.patch)
+              ? "Who pays and the caps apply from the next voice start; calls in progress finish."
+              : undefined,
+        });
+      },
+    };
   };
   const mcp = new Hono();
   mcp.use("*", async (c, next) => {
@@ -999,7 +1086,12 @@ export function createApp(deps: AppDeps): Hono {
     if (!ok) return c.json({ error: "unauthorized" }, 401);
     await next();
   });
-  mcp.route("/", settingsMcpApp(settingsOps));
+  mcp.route(
+    "/",
+    settingsMcpApp((c) =>
+      settingsOpsFor(/^Bearer (.+)$/i.exec(c.req.header("authorization") ?? "")?.[1] ?? ""),
+    ),
+  );
   app.route("/mcp/settings", mcp);
 
   /**
@@ -1112,7 +1204,7 @@ export function createApp(deps: AppDeps): Hono {
       .map((p) => p.userId);
     const lkCap = await usage.checkLivekit(room);
     if (lkCap) return { ok: false, status: 402, body: livekitCapBody(lkCap) };
-    const capped = await usage.checkStart(room, members);
+    const capped = await usage.checkStart(room, members, await productUserCap(room));
     if (capped) {
       return {
         ok: false,
@@ -1966,7 +2058,10 @@ export function createApp(deps: AppDeps): Hono {
       llmInputTokens: llmIn,
       llmOutputTokens: llmOut,
     };
-    const verdict = await usage.record(room, report, hosted);
+    if (r.ok && r.mode === "product" && room.productKeyId) {
+      await stats.productKeySeconds(room.productKeyId, seconds);
+    }
+    const verdict = await usage.record(room, report, hosted, await productUserCap(room));
     // `product_trial`: seconds on the product's key count against this user's allowance.
     if (
       room.productKeyId &&
