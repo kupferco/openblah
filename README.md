@@ -124,3 +124,5 @@ The same list is in the consent line every participant accepts (`DEFAULT_PROCESS
 Open source under the [MIT licence](LICENSE).
 
 The React Native SDK and its example app are described in [docs/react-native.md](docs/react-native.md).
+
+The Housekeeper integration guide, with a tested sample backend, is in [docs/integrations/housekeeper.md](docs/integrations/housekeeper.md).
