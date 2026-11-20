@@ -29,6 +29,8 @@ export const isWhoPays = (v: unknown): v is WhoPays =>
 export interface SettingsLevel {
   /** Product level only: who pays for voice. Never read from a room or user level. */
   whoPays?: WhoPays;
+  /** Product level only: per-user monthly agent minutes. 0 = no cap. Absent = the default. */
+  userMonthlyMinutes?: number;
   llm?: ModelChoice;
   /** Spoken-language override. Absent = follow what people speak. */
   language?: Language;
@@ -75,7 +77,16 @@ export interface SettingsPatch {
   agentName?: string;
   /** Product level only. */
   whoPays?: WhoPays;
+  /** Product level only. Minutes per user per month; 0 turns the cap off, null = the default. */
+  userMonthlyMinutes?: number | null;
 }
+
+/** The parts of a change that belong to the product, not the room. */
+export const isProductPatch = (p: SettingsPatch) =>
+  p.whoPays !== undefined || p.userMonthlyMinutes !== undefined;
+/** The parts that belong to the room (or the user). */
+export const isRoomPatch = (p: SettingsPatch) =>
+  p.llm !== undefined || p.language !== undefined || p.agentName !== undefined;
 
 const MODEL_ID = /^[\w.:/-]{1,80}$/;
 
@@ -129,6 +140,17 @@ export function parsePatch(
     }
     patch.whoPays = r.whoPays;
   }
+  if (r.userMonthlyMinutes !== undefined) {
+    if (!opts.productLevel) {
+      return { ok: false, error: "userMonthlyMinutes can only be set by the product owner" };
+    }
+    const v = r.userMonthlyMinutes;
+    if (v === null || v === "default") patch.userMonthlyMinutes = null;
+    else if (typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1_000_000) {
+      patch.userMonthlyMinutes = Math.round(v);
+    } else
+      return { ok: false, error: "userMonthlyMinutes must be a number of minutes, 0 for no cap" };
+  }
   if (Object.keys(patch).length === 0) return { ok: false, error: "nothing to change" };
   return { ok: true, patch };
 }
@@ -139,7 +161,17 @@ export function applyPatch(level: SettingsLevel | null | undefined, patch: Setti
   else if (patch.llm) next.llm = patch.llm;
   if (patch.language === null) delete next.language;
   else if (patch.language) next.language = patch.language;
+  return next;
+}
+
+/** Product level: the same as `applyPatch` plus the product-only parts. */
+export function applyProductPatch(level: SettingsLevel | null | undefined, patch: SettingsPatch) {
+  const next = applyPatch(level, patch);
   if (patch.whoPays) next.whoPays = patch.whoPays;
+  if (patch.userMonthlyMinutes === null) delete next.userMonthlyMinutes;
+  else if (patch.userMonthlyMinutes !== undefined) {
+    next.userMonthlyMinutes = patch.userMonthlyMinutes;
+  }
   return next;
 }
 
@@ -159,6 +191,14 @@ export function describePatch(patch: SettingsPatch): string {
   else if (patch.language)
     parts.push(`speak ${patch.language === "pt" ? "Portuguese" : "English"}`);
   if (patch.whoPays) parts.push(`set who pays to ${patch.whoPays}`);
+  if (patch.userMonthlyMinutes === null) parts.push("use the default monthly minutes per user");
+  else if (patch.userMonthlyMinutes !== undefined) {
+    parts.push(
+      patch.userMonthlyMinutes === 0
+        ? "turn off the monthly minutes cap per user"
+        : `cap each user at ${patch.userMonthlyMinutes} minutes a month`,
+    );
+  }
   if (patch.agentName) parts.push(`rename the agent to ${patch.agentName}`);
   return parts.join(" and ");
 }
