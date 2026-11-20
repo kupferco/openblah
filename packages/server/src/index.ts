@@ -53,7 +53,15 @@ export {
   LANGUAGES,
   llmUsable,
 } from "./settings.js";
-export type { Language, LlmName, ModelChoice, SettingsLevel, SettingsPatch } from "./settings.js";
+export type {
+  Language,
+  LlmName,
+  ModelChoice,
+  SettingsLevel,
+  SettingsPatch,
+  WhoPays,
+} from "./settings.js";
+export { WHO_PAYS, DEFAULT_WHO_PAYS } from "./settings.js";
 export { vendorKeyChecker } from "./keycheck.js";
 export type { KeyChecker, KeyCheck } from "./keycheck.js";
 export {

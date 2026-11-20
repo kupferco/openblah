@@ -17,8 +17,18 @@ export interface ModelChoice {
   model?: string;
 }
 
+/** Who pays for voice in a product: its own key, each user's key, or its key up to a trial allowance. */
+export const WHO_PAYS = ["product", "user_key", "product_trial"] as const;
+export type WhoPays = (typeof WHO_PAYS)[number];
+/** A new product starts here (plan 370, Q1). */
+export const DEFAULT_WHO_PAYS: WhoPays = "user_key";
+export const isWhoPays = (v: unknown): v is WhoPays =>
+  typeof v === "string" && (WHO_PAYS as readonly string[]).includes(v);
+
 /** One level of settings. Absent parts fall through to the level below. */
 export interface SettingsLevel {
+  /** Product level only: who pays for voice. Never read from a room or user level. */
+  whoPays?: WhoPays;
   llm?: ModelChoice;
   /** Spoken-language override. Absent = follow what people speak. */
   language?: Language;
@@ -63,6 +73,8 @@ export interface SettingsPatch {
   language?: Language | null;
   /** Room level only. */
   agentName?: string;
+  /** Product level only. */
+  whoPays?: WhoPays;
 }
 
 const MODEL_ID = /^[\w.:/-]{1,80}$/;
@@ -73,7 +85,10 @@ export type PatchResult = { ok: true; patch: SettingsPatch } | { ok: false; erro
  * Validate an untrusted change. Accepts `llm` as a provider name or `{provider, model}`;
  * `model` alone is not enough. `language: "auto"` clears the override.
  */
-export function parsePatch(raw: unknown, opts: { roomLevel: boolean }): PatchResult {
+export function parsePatch(
+  raw: unknown,
+  opts: { roomLevel: boolean; productLevel?: boolean },
+): PatchResult {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
     return { ok: false, error: "settings must be an object" };
   }
@@ -105,6 +120,15 @@ export function parsePatch(raw: unknown, opts: { roomLevel: boolean }): PatchRes
     }
     patch.agentName = r.agentName.trim();
   }
+  if (r.whoPays !== undefined) {
+    if (!opts.productLevel) {
+      return { ok: false, error: "whoPays can only be set by the product owner" };
+    }
+    if (!isWhoPays(r.whoPays)) {
+      return { ok: false, error: `whoPays must be one of ${WHO_PAYS.join(", ")}` };
+    }
+    patch.whoPays = r.whoPays;
+  }
   if (Object.keys(patch).length === 0) return { ok: false, error: "nothing to change" };
   return { ok: true, patch };
 }
@@ -115,6 +139,7 @@ export function applyPatch(level: SettingsLevel | null | undefined, patch: Setti
   else if (patch.llm) next.llm = patch.llm;
   if (patch.language === null) delete next.language;
   else if (patch.language) next.language = patch.language;
+  if (patch.whoPays) next.whoPays = patch.whoPays;
   return next;
 }
 
@@ -133,6 +158,7 @@ export function describePatch(patch: SettingsPatch): string {
   if (patch.language === null) parts.push("follow the language people speak");
   else if (patch.language)
     parts.push(`speak ${patch.language === "pt" ? "Portuguese" : "English"}`);
+  if (patch.whoPays) parts.push(`set who pays to ${patch.whoPays}`);
   if (patch.agentName) parts.push(`rename the agent to ${patch.agentName}`);
   return parts.join(" and ");
 }

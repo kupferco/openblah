@@ -11,6 +11,8 @@ import {
   isProvider,
   PROVIDERS,
   resolveRoomKeys,
+  type KeyResolverDeps,
+  type Resolution,
   type KeyStore,
   type KeyTier,
   type ProductKeyConfig,
@@ -43,6 +45,7 @@ import {
   resolveModel,
   type SettingLevels,
   type SettingsLevel,
+  type WhoPays,
   type SettingsPatch,
 } from "./settings.js";
 import { settingsMcpApp, type ToolOutcome } from "./settings-mcp.js";
@@ -99,6 +102,10 @@ export interface AppDeps {
   livekitMode?: "cloud" | "self_hosted";
   /** The server-default level of the model setting (lowest precedence). */
   serverSettings?: SettingsLevel;
+  /** Who pays for a product that has not chosen (new products: `user_key`). Unset keeps the older key order. */
+  defaultWhoPays?: WhoPays;
+  /** Per-product trial allowance check for `product_trial` (without it the allowance counts as used). */
+  productTrial?: KeyResolverDeps["productTrial"];
   /** Checks a key with its vendor. Default: a free "list models" call; mocked in tests. */
   keyChecker?: KeyChecker;
   /** Limits for the public invite endpoints. */
@@ -205,10 +212,11 @@ export function createApp(deps: AppDeps): Hono {
 
   const keyModesConfigured =
     !!deps.keyStore || Object.keys(deps.productKeys ?? {}).length > 0 || !!deps.trial;
-  const resolve = (room: Room) =>
+  const resolve = async (room: Room) =>
     resolveRoomKeys(
       {
         storage,
+        productTrial: deps.productTrial,
         keyStore: deps.keyStore ?? null,
         productKeys: deps.productKeys ?? {},
         trial: {
@@ -224,8 +232,19 @@ export function createApp(deps: AppDeps): Hono {
       },
       room,
       room.productKeyId,
+      room.productKeyId
+        ? ((await storage.getSettings(`product:${room.productKeyId}`))?.whoPays ??
+            deps.defaultWhoPays ??
+            null)
+        : null,
     );
+  const refusalBody = (r: Extract<Resolution, { ok: false }>) => ({
+    error: r.message,
+    code: r.code,
+    ...(r.code === "key_required" ? { reason: r.reason } : {}),
+  });
   const refusalStatus = {
+    key_required: 402,
     sensitive_free_tier: 403,
     no_key: 409,
     trial_exhausted: 402,
@@ -842,7 +861,7 @@ export function createApp(deps: AppDeps): Hono {
   v1.put("/product/settings", async (c) => {
     const body = await readBody(c);
     if (!body) return c.json({ error: "invalid JSON body" }, 400);
-    const parsed = parsePatch(body.settings ?? {}, { roomLevel: false });
+    const parsed = parsePatch(body.settings ?? {}, { roomLevel: false, productLevel: true });
     if (!parsed.ok) return c.json({ error: parsed.error }, 400);
     const pid = keyIdOf(c);
     if (parsed.patch.llm) {
@@ -1082,7 +1101,7 @@ export function createApp(deps: AppDeps): Hono {
       return {
         ok: false,
         status: refusalStatus[keys.code],
-        body: { error: keys.message, code: keys.code },
+        body: refusalBody(keys),
       };
     }
     // Make sure the worker is up (cold start); the call works as a plain room until it joins.
@@ -1456,7 +1475,7 @@ export function createApp(deps: AppDeps): Hono {
     const room = await storage.getRoom(c.req.param("id"));
     if (!room) return c.json({ error: "room not found" }, 404);
     const r = await resolve(room);
-    if (!r.ok) return c.json({ error: r.message, code: r.code }, refusalStatus[r.code]);
+    if (!r.ok) return c.json(refusalBody(r), refusalStatus[r.code]);
     return c.json({ mode: r.mode, tier: r.tier, sensitive: room.sensitive, dataTerms: DATA_TERMS });
   });
 
@@ -1772,7 +1791,7 @@ export function createApp(deps: AppDeps): Hono {
     const room = await storage.getRoom(c.req.param("id"));
     if (!room) return c.json({ error: "room not found" }, 404);
     const r = await resolve(room);
-    if (!r.ok) return c.json({ error: r.message, code: r.code }, refusalStatus[r.code]);
+    if (!r.ok) return c.json(refusalBody(r), refusalStatus[r.code]);
     return c.json({ mode: r.mode, tier: r.tier, keys: r.keys });
   });
   // The agent was asked by voice to leave: the room goes to `off`, like the host's button.
