@@ -5,6 +5,7 @@ The React hooks live in `@openblah/web/react` so the core works without React.
 
 ## Classes
 
+- [KeyRequiredError](classes/KeyRequiredError.md)
 - [McpConnectError](classes/McpConnectError.md)
 - [OpenBlahApi](classes/OpenBlahApi.md)
 - [OpenBlahApiError](classes/OpenBlahApiError.md)
@@ -30,6 +31,7 @@ The React hooks live in `@openblah/web/react` so the core works without React.
 - [InvitePreview](interfaces/InvitePreview.md)
 - [InviteRequestMessage](interfaces/InviteRequestMessage.md)
 - [KeyCheckResult](interfaces/KeyCheckResult.md)
+- [KeyStatus](interfaces/KeyStatus.md)
 - [McpConnection](interfaces/McpConnection.md)
 - [ModelSettings](interfaces/ModelSettings.md)
 - [OnboardingInfo](interfaces/OnboardingInfo.md)
@@ -52,6 +54,7 @@ The React hooks live in `@openblah/web/react` so the core works without React.
 - [ConnectMcpInBrowserOptions](type-aliases/ConnectMcpInBrowserOptions.md)
 - [HistoryRetention](type-aliases/HistoryRetention.md)
 - [KeyProviderName](type-aliases/KeyProviderName.md)
+- [KeyRequiredReason](type-aliases/KeyRequiredReason.md)
 - [Role](type-aliases/Role.md)
 - [RoomMode](type-aliases/RoomMode.md)
 - [WarmupStatus](type-aliases/WarmupStatus.md)

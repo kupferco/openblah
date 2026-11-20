@@ -6,6 +6,10 @@ Error from the server: `status` is the HTTP status, `message` the server's `erro
 
 - `Error`
 
+## Extended by
+
+- [`KeyRequiredError`](KeyRequiredError.md)
+
 ## Constructors
 
 ### Constructor

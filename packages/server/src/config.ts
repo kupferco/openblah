@@ -5,11 +5,11 @@ import { FirestoreStorage } from "./firestore.js";
 import { KeyCipher } from "./crypto.js";
 import { McpOAuthService, parsePreregistered } from "./mcp-oauth.js";
 import { apiKeyId, KeyStore, parseProductKeys, type ProviderKeys } from "./keys.js";
-import { LLM_NAMES, type LlmName, type SettingsLevel } from "./settings.js";
+import { isWhoPays, LLM_NAMES, type LlmName, type SettingsLevel } from "./settings.js";
 import { RealLiveKit } from "./livekit.js";
 import { HttpWorkerWaker } from "./worker.js";
 import { MemoryStorage } from "./storage.js";
-import { DEFAULT_TRIAL_LIMITS, TrialService } from "./trial.js";
+import { DEFAULT_PRODUCT_TRIAL_SECONDS, DEFAULT_TRIAL_LIMITS, TrialService } from "./trial.js";
 import type { Storage } from "./types.js";
 import { DEFAULT_LIMITS, parsePrices, UsageService, webhookNotifier } from "./usage.js";
 
@@ -25,6 +25,9 @@ function required(env: Env, name: string): string {
 export function createAppFromEnv(env: Env = process.env) {
   const apiKeys = parseApiKeys(env.OPENBLAH_API_KEYS);
   if (apiKeys.length === 0) throw new Error("OPENBLAH_API_KEYS must list at least one key");
+  const livekitMode = env.LIVEKIT_MODE ?? "cloud";
+  if (livekitMode !== "cloud" && livekitMode !== "self_hosted")
+    throw new Error(`LIVEKIT_MODE must be "cloud" or "self_hosted", got "${livekitMode}"`);
   const livekit = new RealLiveKit({
     url: required(env, "LIVEKIT_URL"),
     apiKey: required(env, "LIVEKIT_API_KEY"),
@@ -116,6 +119,17 @@ export function createAppFromEnv(env: Env = process.env) {
       }
     : undefined;
 
+  // Who pays for a product that has not chosen. Self-hosted servers behave as `product`.
+  const rawWho = env.OPENBLAH_DEFAULT_WHO_PAYS;
+  if (rawWho && !isWhoPays(rawWho)) {
+    throw new Error("OPENBLAH_DEFAULT_WHO_PAYS must be product, user_key or product_trial");
+  }
+  const defaultWhoPays = isWhoPays(rawWho)
+    ? rawWho
+    : env.OPENBLAH_SELF_HOSTED === "true"
+      ? "product"
+      : undefined;
+
   const usage = new UsageService(storage, {
     prices: parsePrices(env.OPENBLAH_PRICES),
     monthlyCapGbp: num("OPENBLAH_MONTHLY_CAP_GBP", 50),
@@ -124,6 +138,10 @@ export function createAppFromEnv(env: Env = process.env) {
       idleTimeoutSeconds: num("OPENBLAH_IDLE_TIMEOUT_SECONDS", DEFAULT_LIMITS.idleTimeoutSeconds),
       userMonthlyMinutes: num("OPENBLAH_USER_MONTHLY_MINUTES", 0),
       hostMonthlyMinutes: num("OPENBLAH_HOST_MONTHLY_MINUTES", 0),
+      // About 80% of the LiveKit Cloud free plan (5,000 participant minutes); 0 turns it off.
+      // Defaults are placeholders until the real plan limits are checked (docs/costs.md).
+      globalLivekitMonthlyMinutes: num("OPENBLAH_LIVEKIT_MONTHLY_MINUTES", 4000),
+      productLivekitMonthlyMinutes: num("OPENBLAH_PRODUCT_LIVEKIT_MINUTES", 500),
     },
     notify: async (alert) => {
       console.log(JSON.stringify(alert));
@@ -135,6 +153,11 @@ export function createAppFromEnv(env: Env = process.env) {
   return createApp({
     storage,
     serverSettings,
+    ...(defaultWhoPays ? { defaultWhoPays } : {}),
+    defaultProductTrialSeconds: num(
+      "OPENBLAH_PRODUCT_TRIAL_SECONDS",
+      DEFAULT_PRODUCT_TRIAL_SECONDS,
+    ),
     usage,
     livekit,
     apiKeys,
@@ -151,6 +174,7 @@ export function createAppFromEnv(env: Env = process.env) {
     livekitUrl: env.LIVEKIT_URL,
     ...(env.OPENBLAH_WATCH_SECRET ? { watchSecret: env.OPENBLAH_WATCH_SECRET } : {}),
     ...(env.OPENBLAH_WATCH_SOCKET_URL ? { watchSocketUrl: env.OPENBLAH_WATCH_SOCKET_URL } : {}),
+    livekitMode,
     ...(env.OPENBLAH_INVITE_BASE_URL ? { inviteBaseUrl: env.OPENBLAH_INVITE_BASE_URL } : {}),
     ...(env.OPENBLAH_AGENT_NAME ? { agentName: env.OPENBLAH_AGENT_NAME } : {}),
   });

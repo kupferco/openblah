@@ -93,6 +93,11 @@ export interface OpenBlahLabels {
   confirmYes: string;
   confirmNo: string;
   requestsAgent: string;
+  /** Shown when the product does not pay for voice and the user needs their own key. */
+  keyRequired: string;
+  keyRequiredTrialUsed: string;
+  /** Button that opens the add-key sheet. */
+  addKey: string;
 }
 
 /** The English labels. @public */
@@ -126,6 +131,9 @@ export const defaultLabels: OpenBlahLabels = {
   confirmYes: "Yes, do it",
   confirmNo: "Cancel",
   requestsAgent: "asks to bring the agent in.",
+  keyRequired: "Add your own key to keep using voice.",
+  keyRequiredTrialUsed: "The free allowance is used up. Add your own key to keep using voice.",
+  addKey: "Add your key",
 };
 
 /** Fill the gaps of partial labels with {@link defaultLabels}. @public */
@@ -170,6 +178,14 @@ export interface OpenBlahRoomBaseProps {
   onLeave?: () => void;
   /** Called when joining fails. */
   onError?: (error: Error) => void;
+  /**
+   * Set when the product does not pay for this user's voice (a `KeyRequiredError` from starting
+   * the call, or `useKeyStatus` saying `needs_key`). The room then shows "Add your own key to
+   * keep using voice" with a button, instead of an error.
+   */
+  keyRequired?: { reason?: "product_not_paying" | "trial_used" } | null;
+  /** The user tapped "Add your key": open your add-key sheet (`<OpenBlahAddKeySheet />`). */
+  onAddKey?: () => void;
 }
 
 /**

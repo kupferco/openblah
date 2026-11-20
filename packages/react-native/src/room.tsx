@@ -129,6 +129,15 @@ export function OpenBlahRoom(props: OpenBlahRoomProps) {
         )}
       </View>
 
+      {props.keyRequired && (
+        <View style={card(t.warning)}>
+          <Text style={text}>
+            {props.keyRequired.reason === "trial_used" ? l.keyRequiredTrialUsed : l.keyRequired}
+          </Text>
+          {props.onAddKey && <Btn t={t} primary label={l.addKey} onPress={props.onAddKey} />}
+        </View>
+      )}
+
       {note && <Text style={{ color: t.danger, fontSize: t.fontSize }}>{note}</Text>}
       {v.error && <Text style={{ color: t.danger, fontSize: t.fontSize }}>{v.error}</Text>}
 

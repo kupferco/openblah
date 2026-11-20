@@ -17,8 +17,22 @@ export interface ModelChoice {
   model?: string;
 }
 
+/** Who pays for voice in a product: its own key, each user's key, or its key up to a trial allowance. */
+export const WHO_PAYS = ["product", "user_key", "product_trial"] as const;
+export type WhoPays = (typeof WHO_PAYS)[number];
+/** A new product starts here (plan 370, Q1). */
+export const DEFAULT_WHO_PAYS: WhoPays = "user_key";
+export const isWhoPays = (v: unknown): v is WhoPays =>
+  typeof v === "string" && (WHO_PAYS as readonly string[]).includes(v);
+
 /** One level of settings. Absent parts fall through to the level below. */
 export interface SettingsLevel {
+  /** Product level only: who pays for voice. Never read from a room or user level. */
+  whoPays?: WhoPays;
+  /** Product level only: per-user monthly agent minutes. 0 = no cap. Absent = the default. */
+  userMonthlyMinutes?: number;
+  /** Product level only: agent audio seconds each user gets on the product's key in `product_trial` (default 300). */
+  trialSeconds?: number;
   llm?: ModelChoice;
   /** Spoken-language override. Absent = follow what people speak. */
   language?: Language;
@@ -63,7 +77,20 @@ export interface SettingsPatch {
   language?: Language | null;
   /** Room level only. */
   agentName?: string;
+  /** Product level only. */
+  whoPays?: WhoPays;
+  /** Product level only. Minutes per user per month; 0 turns the cap off, null = the default. */
+  userMonthlyMinutes?: number | null;
+  /** Product level only: per-user trial allowance in seconds (0 to 86400). */
+  trialSeconds?: number;
 }
+
+/** The parts of a change that belong to the product, not the room. */
+export const isProductPatch = (p: SettingsPatch) =>
+  p.whoPays !== undefined || p.userMonthlyMinutes !== undefined;
+/** The parts that belong to the room (or the user). */
+export const isRoomPatch = (p: SettingsPatch) =>
+  p.llm !== undefined || p.language !== undefined || p.agentName !== undefined;
 
 const MODEL_ID = /^[\w.:/-]{1,80}$/;
 
@@ -73,7 +100,10 @@ export type PatchResult = { ok: true; patch: SettingsPatch } | { ok: false; erro
  * Validate an untrusted change. Accepts `llm` as a provider name or `{provider, model}`;
  * `model` alone is not enough. `language: "auto"` clears the override.
  */
-export function parsePatch(raw: unknown, opts: { roomLevel: boolean }): PatchResult {
+export function parsePatch(
+  raw: unknown,
+  opts: { roomLevel: boolean; productLevel?: boolean },
+): PatchResult {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
     return { ok: false, error: "settings must be an object" };
   }
@@ -105,6 +135,36 @@ export function parsePatch(raw: unknown, opts: { roomLevel: boolean }): PatchRes
     }
     patch.agentName = r.agentName.trim();
   }
+  if (r.whoPays !== undefined) {
+    if (!opts.productLevel) {
+      return { ok: false, error: "whoPays can only be set by the product owner" };
+    }
+    if (!isWhoPays(r.whoPays)) {
+      return { ok: false, error: `whoPays must be one of ${WHO_PAYS.join(", ")}` };
+    }
+    patch.whoPays = r.whoPays;
+  }
+  if (r.userMonthlyMinutes !== undefined) {
+    if (!opts.productLevel) {
+      return { ok: false, error: "userMonthlyMinutes can only be set by the product owner" };
+    }
+    const v = r.userMonthlyMinutes;
+    if (v === null || v === "default") patch.userMonthlyMinutes = null;
+    else if (typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1_000_000) {
+      patch.userMonthlyMinutes = Math.round(v);
+    } else
+      return { ok: false, error: "userMonthlyMinutes must be a number of minutes, 0 for no cap" };
+  }
+  if (r.trialSeconds !== undefined) {
+    if (!opts.productLevel) {
+      return { ok: false, error: "trialSeconds can only be set by the product owner" };
+    }
+    const t = r.trialSeconds;
+    if (typeof t !== "number" || !Number.isInteger(t) || t < 0 || t > 86_400) {
+      return { ok: false, error: "trialSeconds must be a whole number from 0 to 86400" };
+    }
+    patch.trialSeconds = t;
+  }
   if (Object.keys(patch).length === 0) return { ok: false, error: "nothing to change" };
   return { ok: true, patch };
 }
@@ -115,6 +175,18 @@ export function applyPatch(level: SettingsLevel | null | undefined, patch: Setti
   else if (patch.llm) next.llm = patch.llm;
   if (patch.language === null) delete next.language;
   else if (patch.language) next.language = patch.language;
+  return next;
+}
+
+/** Product level: the same as `applyPatch` plus the product-only parts. */
+export function applyProductPatch(level: SettingsLevel | null | undefined, patch: SettingsPatch) {
+  const next = applyPatch(level, patch);
+  if (patch.whoPays) next.whoPays = patch.whoPays;
+  if (patch.userMonthlyMinutes === null) delete next.userMonthlyMinutes;
+  else if (patch.userMonthlyMinutes !== undefined) {
+    next.userMonthlyMinutes = patch.userMonthlyMinutes;
+  }
+  if (patch.trialSeconds !== undefined) next.trialSeconds = patch.trialSeconds;
   return next;
 }
 
@@ -133,6 +205,18 @@ export function describePatch(patch: SettingsPatch): string {
   if (patch.language === null) parts.push("follow the language people speak");
   else if (patch.language)
     parts.push(`speak ${patch.language === "pt" ? "Portuguese" : "English"}`);
+  if (patch.whoPays) parts.push(`set who pays to ${patch.whoPays}`);
+  if (patch.userMonthlyMinutes === null) parts.push("use the default monthly minutes per user");
+  else if (patch.userMonthlyMinutes !== undefined) {
+    parts.push(
+      patch.userMonthlyMinutes === 0
+        ? "turn off the monthly minutes cap per user"
+        : `cap each user at ${patch.userMonthlyMinutes} minutes a month`,
+    );
+  }
+  if (patch.trialSeconds !== undefined) {
+    parts.push(`set the free trial to ${Math.round(patch.trialSeconds / 6) / 10} minutes per user`);
+  }
   if (patch.agentName) parts.push(`rename the agent to ${patch.agentName}`);
   return parts.join(" and ");
 }

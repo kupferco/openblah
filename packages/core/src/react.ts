@@ -335,6 +335,13 @@ export function useInviteRequests(
 
 export { useHistory, useCall, type UseHistoryOptions, type UseCallOptions } from "./history.js";
 export { useOnboarding, type UseOnboardingOptions } from "./onboarding.js";
+export {
+  useAddKeySheet,
+  useKeyStatus,
+  defaultKeySheetTexts,
+  type KeySheetTexts,
+  type UseAddKeySheetOptions,
+} from "./key-sheet.js";
 
 export {
   useRoomView,

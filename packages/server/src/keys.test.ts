@@ -8,7 +8,14 @@ const SECRET_VALUE = "sk-super-secret-value";
 const PRODUCT: ProviderKeys = { gemini: "pg", deepgram: "pd", cartesia: "pc" };
 const TRIAL: ProviderKeys = { gemini: "tg", deepgram: "td", cartesia: "tc" };
 
-function setup(opts: { product?: boolean; trial?: boolean; trialSeconds?: number } = {}) {
+function setup(
+  opts: {
+    product?: boolean;
+    trial?: boolean;
+    trialSeconds?: number;
+    productTrialAllowance?: boolean;
+  } = {},
+) {
   const storage = new MemoryStorage();
   const livekit: LiveKitGateway = {
     createRoom: vi.fn(async () => {}),
@@ -42,6 +49,9 @@ function setup(opts: { product?: boolean; trial?: boolean; trialSeconds?: number
       : undefined,
     verifier,
     agentSecret: AGENT,
+    ...(opts.productTrialAllowance === undefined
+      ? {}
+      : { productTrial: { hasAllowance: async () => opts.productTrialAllowance! } }),
   });
   const call = (
     method: string,
@@ -335,5 +345,125 @@ describe("accounts", () => {
       400,
     );
     expect((await call("PUT", "/v1/users/u/keys/gemini", { tier: "paid" })).status).toBe(400);
+  });
+});
+
+describe("who pays", () => {
+  const setMode = (call: ReturnType<typeof setup>["call"], whoPays: string) =>
+    call("PUT", "/v1/product/settings", { settings: { whoPays } });
+  const mode = async (call: ReturnType<typeof setup>["call"], id: string) => {
+    const r = await call("GET", `/v1/rooms/${id}/key-mode`);
+    return { status: r.status, body: (await r.json()) as Record<string, unknown> };
+  };
+
+  it("product: the product key pays, the user's key is not used", async () => {
+    const { call, room, saveAll } = setup({ product: true });
+    expect((await setMode(call, "product")).status).toBe(200);
+    await saveAll("u1", "paid");
+    const id = await room("u1");
+    expect((await mode(call, id)).body).toMatchObject({ mode: "product" });
+  });
+
+  it("user_key: never the product key; key_required until the user adds one", async () => {
+    const { call, room, saveAll } = setup({ product: true });
+    await setMode(call, "user_key");
+    const id = await room("u1");
+    const r = await mode(call, id);
+    expect(r.status).toBe(402);
+    expect(r.body).toMatchObject({ code: "key_required", reason: "product_not_paying" });
+    await saveAll("u1", "paid");
+    expect((await mode(call, id)).body).toMatchObject({ mode: "byok" });
+  });
+
+  it("product_trial: product key while the allowance lasts, then key_required trial_used", async () => {
+    const open = setup({ product: true, productTrialAllowance: true });
+    await setMode(open.call, "product_trial");
+    expect((await mode(open.call, await open.room("u1"))).body).toMatchObject({
+      mode: "product",
+    });
+    const used = setup({ product: true, productTrialAllowance: false });
+    await setMode(used.call, "product_trial");
+    const id = await used.room("u1");
+    expect((await mode(used.call, id)).body).toMatchObject({
+      code: "key_required",
+      reason: "trial_used",
+    });
+    await used.saveAll("u1", "paid");
+    expect((await mode(used.call, id)).body).toMatchObject({ mode: "byok" });
+  });
+
+  it("switching applies to the next resolution and back again is instant", async () => {
+    const { call, room } = setup({ product: true });
+    await setMode(call, "product");
+    const id = await room("u1");
+    expect((await mode(call, id)).status).toBe(200);
+    await setMode(call, "user_key");
+    expect((await mode(call, id)).status).toBe(402);
+    await setMode(call, "product");
+    expect((await mode(call, id)).status).toBe(200);
+  });
+
+  it("only the product owner may set it, with a valid value", async () => {
+    const { call, room } = setup({ product: true });
+    expect((await setMode(call, "everyone")).status).toBe(400);
+    const id = await room("u1");
+    expect(
+      (await call("PUT", `/v1/rooms/${id}/settings`, { settings: { whoPays: "product" } })).status,
+    ).toBe(400);
+    expect(
+      (await call("PUT", "/v1/users/u1/settings", { settings: { whoPays: "product" } })).status,
+    ).toBe(400);
+  });
+  it("key-status pre-checks a user without a room", async () => {
+    const { call, saveAll } = setup({ product: true });
+    const status = async () => (await call("GET", "/v1/users/u1/key-status")).json();
+    await setMode(call, "user_key");
+    expect(await status()).toEqual({ status: "needs_key", reason: "product_not_paying" });
+    await saveAll("u1", "paid");
+    expect(await status()).toEqual({ status: "ok" });
+    await setMode(call, "product");
+    expect(await status()).toEqual({ status: "ok" });
+    expect((await call("GET", "/v1/users/u1/key-status", undefined, null)).status).toBe(401);
+  });
+
+  it("product_trial counts seconds per user and product against the allowance", async () => {
+    const { call, room } = setup({ product: true });
+    await setMode(call, "product_trial");
+    await call("PUT", "/v1/product/settings", { settings: { trialSeconds: 100 } });
+    const a = await room("u1");
+    const b = await room("u2");
+    const report = (id: string, seconds: number) =>
+      Promise.resolve(call("POST", `/internal/rooms/${id}/usage`, { seconds }, AGENT)).then((r) =>
+        r.json(),
+      );
+    expect(await report(a, 60)).toMatchObject({ counted: true, remainingSeconds: 40 });
+    // Another user has their own counter.
+    expect(await report(b, 10)).toMatchObject({ usedSeconds: 10, available: true });
+    expect(await report(a, 500)).toMatchObject({
+      usedSeconds: 100,
+      available: false,
+      stop: "trial_used",
+    });
+    expect((await mode(call, a)).body).toMatchObject({ reason: "trial_used" });
+    expect((await mode(call, b)).body).toMatchObject({ mode: "product" });
+    // The owner raises the allowance: it applies at once.
+    await call("PUT", "/v1/product/settings", { settings: { trialSeconds: 300 } });
+    expect((await mode(call, a)).body).toMatchObject({ mode: "product" });
+  });
+
+  it("uses a 300 second allowance by default and validates trialSeconds", async () => {
+    const { call, room } = setup({ product: true });
+    await setMode(call, "product_trial");
+    const id = await room("u1");
+    const r = await call("POST", `/internal/rooms/${id}/usage`, { seconds: 400 }, AGENT);
+    expect(await r.json()).toMatchObject({ usedSeconds: 300, limitSeconds: 300, available: false });
+    for (const bad of [-1, 1.5, "5", 100000]) {
+      expect(
+        (await call("PUT", "/v1/product/settings", { settings: { trialSeconds: bad } })).status,
+      ).toBe(400);
+    }
+    expect(
+      (await call("PUT", "/v1/users/u1/settings", { settings: { trialSeconds: 10 } })).status,
+    ).toBe(400);
   });
 });

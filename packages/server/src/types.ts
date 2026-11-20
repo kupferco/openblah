@@ -22,6 +22,8 @@ export interface Room {
   /** Room-level model and language (the top level of the three, T17). */
   settings?: SettingsLevel;
   createdAt: string;
+  /** LiveKit server the room was created on (`wss://...`). Rooms stay on it when the server switches. */
+  livekitUrl?: string;
   /** Server-only: id of the API key that created the room (picks product keys). Never returned. */
   productKeyId?: string;
 
@@ -199,6 +201,8 @@ export interface LiveKitGateway {
     roomId: string,
     metadata: string,
   ): Promise<{ dispatchId: string; created: boolean }>;
+  /** Cheap reachability check for the health report. Optional: absent means "not checked". */
+  ping?(): Promise<void>;
 }
 
 /**
