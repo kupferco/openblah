@@ -250,6 +250,14 @@ export function createApp(deps: AppDeps): Hono {
     trial_exhausted: 402,
     sign_in_required: 401,
   } as const;
+  const livekitCapBody = (scope: "product" | "global") => ({
+    error:
+      scope === "global"
+        ? "Voice calls are paused for everyone until next month. Try again then."
+        : "This app has used its voice call minutes for this month. Try again next month.",
+    code: "livekit_cap" as const,
+    scope,
+  });
   const baseUrl = (deps.inviteBaseUrl ?? DEFAULT_INVITE_BASE_URL).replace(/\/+$/, "");
   const defaultAgentName = deps.agentName ?? DEFAULT_AGENT_NAME;
   const rl = deps.joinRateLimit ?? { max: 10, windowMs: 60_000 };
@@ -504,6 +512,8 @@ export function createApp(deps: AppDeps): Hono {
     }
     const existing = await storage.getParticipant(roomId, userId);
     if (existing?.removedAt) return c.json({ error: "participant was removed" }, 403);
+    const lkCap = await usage.checkLivekit(room);
+    if (lkCap) return c.json(livekitCapBody(lkCap), 402);
     // A guest id cannot be upgraded to a member through this endpoint.
     if (existing?.role === "guest") return c.json({ error: "user id is a guest" }, 403);
     const isHost = userId === room.hostUserId;
@@ -1087,6 +1097,8 @@ export function createApp(deps: AppDeps): Hono {
     const members = (await storage.listParticipants(room.id))
       .filter((p) => !p.removedAt)
       .map((p) => p.userId);
+    const lkCap = await usage.checkLivekit(room);
+    if (lkCap) return { ok: false, status: 402, body: livekitCapBody(lkCap) };
     const capped = await usage.checkStart(room, members);
     if (capped) {
       return {
@@ -1397,6 +1409,8 @@ export function createApp(deps: AppDeps): Hono {
     if (room.agent === "on" && !consented) {
       return c.json({ error: "consent is required to join this room" }, 400);
     }
+    const lkCap = await usage.checkLivekit(room);
+    if (lkCap) return c.json(livekitCapBody(lkCap), 402);
     // Check everything before using up an invite slot.
     const used = await storage.consumeInvite(invite.id, now());
     if (!used) return invalidInvite(c);

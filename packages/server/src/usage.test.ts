@@ -5,7 +5,7 @@ import {
   parsePrices,
   TrialService,
   UsageService,
-  type CostAlert,
+  type UsageAlert,
   type LiveKitGateway,
   type ProviderKeys,
   type TokenVerifier,
@@ -25,7 +25,7 @@ function setup(
   } = {},
 ) {
   const storage = new MemoryStorage();
-  const alerts: CostAlert[] = [];
+  const alerts: UsageAlert[] = [];
   const usage = new UsageService(storage, {
     monthlyCapGbp: opts.cap ?? 50,
     prices: opts.prices,
@@ -291,5 +291,49 @@ describe("price table", () => {
     expect(parsePrices('{"sttPerSecond":0.5}').sttPerSecond).toBe(0.5);
     expect(() => parsePrices('{"nope":1}')).toThrow();
     expect(() => parsePrices('{"sttPerSecond":-1}')).toThrow();
+  });
+});
+
+describe("LiveKit minute caps", () => {
+  const tokenBody = (id: string) => ({ roomId: id, userId: "host", displayName: "H" });
+
+  it("refuses tokens and agent start for a product over its cap, and alerts once", async () => {
+    const { room, report, call, alerts } = setup({
+      limits: { productLivekitMonthlyMinutes: 10, globalLivekitMonthlyMinutes: 0 },
+    });
+    const { id } = await room("host");
+    expect((await call("POST", "/v1/tokens", tokenBody(id))).status).toBe(200);
+    // 8 minutes: 80% alert, still allowed.
+    const r1 = await report(id, { seconds: 1, participantSeconds: { host: 480 } });
+    expect(r1.json.available).toBe(true);
+    expect(alerts.filter((a) => a.event === "livekit_alert").map((a) => a.event)).toHaveLength(1);
+    const r2 = await report(id, { seconds: 1, participantSeconds: { host: 120 } });
+    expect(r2.json).toMatchObject({ available: false, stop: "livekit_cap" });
+    const t = await call("POST", "/v1/tokens", tokenBody(id));
+    expect(t.status).toBe(402);
+    expect(await t.json()).toMatchObject({ code: "livekit_cap", scope: "product" });
+    const a = await call("POST", `/v1/rooms/${id}/agent`, { actorUserId: "host" });
+    expect(a.status).toBe(402);
+    // Another product is unaffected: only the global ceiling would apply, and it is off.
+    const levels = alerts.flatMap((x) => (x.event === "livekit_alert" ? [x.level] : []));
+    expect(levels).toEqual(["warning_80", "hard_cap"]);
+  });
+
+  it("stops every product at the global ceiling", async () => {
+    const { room, report, call } = setup({
+      limits: { globalLivekitMonthlyMinutes: 5, productLivekitMonthlyMinutes: 0 },
+    });
+    const { id } = await room("host");
+    await report(id, { seconds: 1, participantSeconds: { host: 300 } });
+    const t = await call("POST", "/v1/tokens", tokenBody(id));
+    expect(t.status).toBe(402);
+    expect(await t.json()).toMatchObject({ code: "livekit_cap", scope: "global" });
+  });
+
+  it("does nothing when the caps are off", async () => {
+    const { room, report, call } = setup();
+    const { id } = await room("host");
+    await report(id, { seconds: 1, participantSeconds: { host: 99999 } });
+    expect((await call("POST", "/v1/tokens", tokenBody(id))).status).toBe(200);
   });
 });

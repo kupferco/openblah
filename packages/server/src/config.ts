@@ -138,6 +138,10 @@ export function createAppFromEnv(env: Env = process.env) {
       idleTimeoutSeconds: num("OPENBLAH_IDLE_TIMEOUT_SECONDS", DEFAULT_LIMITS.idleTimeoutSeconds),
       userMonthlyMinutes: num("OPENBLAH_USER_MONTHLY_MINUTES", 0),
       hostMonthlyMinutes: num("OPENBLAH_HOST_MONTHLY_MINUTES", 0),
+      // About 80% of the LiveKit Cloud free plan (5,000 participant minutes); 0 turns it off.
+      // Defaults are placeholders until the real plan limits are checked (docs/costs.md).
+      globalLivekitMonthlyMinutes: num("OPENBLAH_LIVEKIT_MONTHLY_MINUTES", 4000),
+      productLivekitMonthlyMinutes: num("OPENBLAH_PRODUCT_LIVEKIT_MINUTES", 500),
     },
     notify: async (alert) => {
       console.log(JSON.stringify(alert));
