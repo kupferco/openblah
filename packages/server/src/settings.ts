@@ -31,6 +31,8 @@ export interface SettingsLevel {
   whoPays?: WhoPays;
   /** Product level only: per-user monthly agent minutes. 0 = no cap. Absent = the default. */
   userMonthlyMinutes?: number;
+  /** Product level only: agent audio seconds each user gets on the product's key in `product_trial` (default 300). */
+  trialSeconds?: number;
   llm?: ModelChoice;
   /** Spoken-language override. Absent = follow what people speak. */
   language?: Language;
@@ -79,6 +81,8 @@ export interface SettingsPatch {
   whoPays?: WhoPays;
   /** Product level only. Minutes per user per month; 0 turns the cap off, null = the default. */
   userMonthlyMinutes?: number | null;
+  /** Product level only: per-user trial allowance in seconds (0 to 86400). */
+  trialSeconds?: number;
 }
 
 /** The parts of a change that belong to the product, not the room. */
@@ -151,6 +155,16 @@ export function parsePatch(
     } else
       return { ok: false, error: "userMonthlyMinutes must be a number of minutes, 0 for no cap" };
   }
+  if (r.trialSeconds !== undefined) {
+    if (!opts.productLevel) {
+      return { ok: false, error: "trialSeconds can only be set by the product owner" };
+    }
+    const t = r.trialSeconds;
+    if (typeof t !== "number" || !Number.isInteger(t) || t < 0 || t > 86_400) {
+      return { ok: false, error: "trialSeconds must be a whole number from 0 to 86400" };
+    }
+    patch.trialSeconds = t;
+  }
   if (Object.keys(patch).length === 0) return { ok: false, error: "nothing to change" };
   return { ok: true, patch };
 }
@@ -172,6 +186,7 @@ export function applyProductPatch(level: SettingsLevel | null | undefined, patch
   else if (patch.userMonthlyMinutes !== undefined) {
     next.userMonthlyMinutes = patch.userMonthlyMinutes;
   }
+  if (patch.trialSeconds !== undefined) next.trialSeconds = patch.trialSeconds;
   return next;
 }
 
@@ -198,6 +213,9 @@ export function describePatch(patch: SettingsPatch): string {
         ? "turn off the monthly minutes cap per user"
         : `cap each user at ${patch.userMonthlyMinutes} minutes a month`,
     );
+  }
+  if (patch.trialSeconds !== undefined) {
+    parts.push(`set the free trial to ${Math.round(patch.trialSeconds / 6) / 10} minutes per user`);
   }
   if (patch.agentName) parts.push(`rename the agent to ${patch.agentName}`);
   return parts.join(" and ");
