@@ -78,61 +78,63 @@ Until then, stay on the LiveKit Cloud free tier. The goal is a flat monthly cost
 
 ## Open questions
 
+All answered by the owner on 2026-11-20 (assumed answers accepted).
+
 ### Q1. What should be the default who-pays mode for a newly registered product?
 
 Context: it decides whether a new product costs the owner anything until someone changes the setting.
 Assumed: `user_key` for new products, while Housekeeper is explicitly set to `product` for early testing.
 Type: business
-Answer: _open_
+Answer: `user_key` for new products, while Housekeeper is explicitly set to `product` for early testing. (owner accepted the assumed answer, 2026-11-20)
 
 ### Q2. How big should the default trial allowance be in `product_trial` mode?
 
 Context: too small and users churn at the key prompt; too big and the product owner pays more.
 Assumed: 5 minutes of agent audio per user, configurable per product.
 Type: business
-Answer: _open_
+Answer: 5 minutes of agent audio per user, configurable per product. (owner accepted the assumed answer, 2026-11-20)
 
 ### Q3. Should the per-user minute cap be mandatory when the mode is `product`?
 
 Context: without it one user can run up the product owner's bill.
 Assumed: Yes, a default of 60 minutes per user per month that the owner can raise or turn off.
 Type: business
-Answer: _open_
+Answer: Yes, a default of 60 minutes per user per month that the owner can raise or turn off. (owner accepted the assumed answer, 2026-11-20)
 
 ### Q4. When the owner switches 1 to 2, may calls already in progress finish?
 
 Context: cutting a call mid-sentence is bad; letting it run costs a little more.
 Assumed: Yes, running calls finish (up to the room max duration); the change applies to the next voice start.
 Type: technical
-Answer: _open_
+Answer: Yes, running calls finish (up to the room max duration); the change applies to the next voice start. (owner accepted the assumed answer, 2026-11-20)
 
 ### Q5. Should the add-your-own-key sheet be the same one the standalone app uses?
 
 Context: the standalone app (T16/T24) already plans an onboarding step for keys; one shared component avoids two flows.
 Assumed: Yes, one shared component in the SDK, themable by the product.
 Type: technical
-Answer: _open_
+Answer: Yes, one shared component in the SDK, themable by the product. (owner accepted the assumed answer, 2026-11-20)
 
 ### Q6. What LiveKit cap should each product get by default?
 
 Context: LiveKit minutes always land on the owner's account, so a runaway product could use up the free plan.
 Assumed: A global ceiling at about 80% of the free plan and a per-product monthly cap of 500 participant minutes, both env settings, until the real plan limits are checked.
 Type: business
-Answer: _open_
+Answer: A global ceiling at about 80% of the free plan and a per-product monthly cap of 500 participant minutes, both env settings, until the real plan limits are checked. (owner accepted the assumed answer, 2026-11-20)
 
 ### Q7. Should users with their own key be able to use it across several products?
 
 Context: a key saved once is convenient, but ties users together across products and widens the blast radius of a leak.
 Assumed: No, keys stay per product and user for now; the standalone app account is separate.
 Type: business
-Answer: _open_
+Answer: No, keys stay per product and user for now; the standalone app account is separate. (owner accepted the assumed answer, 2026-11-20)
 
 ### Q8. Should a product owner see which users have their own key, or only the count?
 
 Context: names are personal data (UK GDPR / LGPD); a count is enough for the decision to switch.
 Assumed: Count only.
 Type: business
-Answer: _open_
+Answer: Count only. (owner accepted the assumed answer, 2026-11-20)
 
 ### Q9. Which VM provider should host the self-hosted LiveKit?
 
@@ -146,9 +148,11 @@ Answer: GCE, London first, São Paulo later (owner decision 2026-11-20).
 Context: self-hosting adds work and risk; it pays off only above the free plan.
 Assumed: Only when the free tier is about 70% used for two months, or a product needs more than its limits; not before.
 Type: business
-Answer: _open_
+Answer: Only when the free tier is about 70% used for two months, or a product needs more than its limits; not before. (owner accepted the assumed answer, 2026-11-20)
 
 ## Suggested tasks
+
+Proposed change tasks, with the accepted answers applied (defaults: `user_key` for new products, 5-minute trial, 60-minute per-user cap in `product` mode, 500 LiveKit minutes per product):
 
 1. Who-pays setting and resolution: `whoPays` product setting (`product`, `user_key`, `product_trial`), new key resolution order, `key_required` error, tests that each mode and the switch behave.
 2. Per-product trial allowance (after 1): per-user, per-product seconds counter and the configurable allowance.
