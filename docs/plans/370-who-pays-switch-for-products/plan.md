@@ -48,8 +48,25 @@ Resolution order per room becomes: the product's `whoPays` decides which of {use
 
 LiveKit stays on the OpenBlah server's LiveKit account in every mode: users and products never hold LiveKit keys, and a user's own LLM key does not pay for call minutes. The free plan is the limit, so this is the real remaining cost to the owner. A cap is needed too, and it should be per product, not just global: `OPENBLAH_PRODUCT_LIVEKIT_MINUTES` monthly (participant minutes), with the existing per-room max duration and idle timeout. A product over its cap gets `402 livekit_cap` and a message; a global ceiling stops everything before the LiveKit plan is exceeded, with an 80% alert like the £50 cap. Plain calls with the agent off cost only LiveKit minutes, so the cap applies to them as well. Exact allowances need checking on LiveKit's pricing page (still a **Verify** in plan section 6).
 
+## Self-hosting LiveKit (owner addition, not urgent)
+
+Until then, stay on the LiveKit Cloud free tier. The goal is a flat monthly cost for audio instead of per minute. Numbers below are starting points and need checking against LiveKit's self-hosting docs and the VM provider's pricing (**Verify**).
+
+- **Where it runs.** LiveKit cannot run on Cloud Run: WebRTC media needs UDP and a stable public IP. It goes on one small VM, either Google Compute Engine or a cheap VPS (Hostinger or similar). The OpenBlah server and agent worker stay on Cloud Run and only point at it through `LIVEKIT_URL`, `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET`.
+- **VM size for 2-4 person calls.** Audio only, no video, no egress or ingress service: media is about 30-50 kbps per stream, so bandwidth and CPU are small. Start with 2 vCPU and 4 GB RAM (GCE `e2-medium` or the VPS equivalent), Ubuntu LTS, one static IP, and move to 4 vCPU if CPU stays above about 50% in monitoring. A single node needs no Redis. Expect roughly tens of concurrent rooms on this size (**Verify** with a load test using `lk load-test`).
+- **Cost comparison.** A VPS with an included traffic allowance gives a truly flat price. GCE is flat for the VM and IP but internet egress is billed per GB, so check it against the expected audio volume before choosing; a VPS is the cheaper start.
+- **Ports and firewall.** Open only: `443/tcp` (HTTPS and WebSocket signalling through the reverse proxy, and TURN over TLS), `80/tcp` (certificate issuing), `7881/tcp` (WebRTC over TCP fallback), `3478/udp` (TURN/UDP), and the media UDP range (default `50000-60000/udp`; a single port such as `7882/udp` with `udp_port` is simpler to firewall and enough at this size). Keep `7880` (LiveKit's own HTTP port) closed to the internet and reachable only by the proxy on the same host. SSH only from the owner's IP or through the provider's console. On GCE this is a VPC firewall rule with a network tag; on a VPS use `ufw` plus the provider's panel firewall.
+- **TLS and domain.** A subdomain such as `rtc.<domain>` with an A record to the static IP, and a second name for TURN if the TLS-TURN setup needs it (`turn.<domain>`). Use LiveKit's generated Docker Compose setup, which runs Caddy for automatic Let's Encrypt certificates. Clients and the server use `wss://rtc.<domain>` as `LIVEKIT_URL`.
+- **TURN.** Turn on LiveKit's built-in TURN server (`turn.enabled`, TLS on 443 and UDP on 3478) so people behind strict networks (corporate, some mobile carriers) still connect. No separate coturn is needed at this size. Set the node's `rtc.use_external_ip: true` so it advertises the public IP. Test from a phone on mobile data and from a network that blocks UDP.
+- **Agent worker connection.** The worker is a LiveKit Agents process that connects outbound over `wss://` to the self-hosted server using the same API key and secret as the OpenBlah server, so no inbound port is needed on Cloud Run. The scale-to-zero caveat in plan section 3 stays: the OpenBlah server dispatches the worker on demand. The worker joins as a normal participant and counts in the participant totals. LiveKit Cloud-only features (built-in inference, hosted agents, Cloud analytics) are not available, which is fine because the agent uses our own `LlmProvider` and STT/TTS adapters.
+- **Monitoring.** An external uptime check (Google Cloud Monitoring uptime check or a free uptime service) against `https://rtc.<domain>` with an alert to the owner; LiveKit's Prometheus endpoint (`prometheus_port`, bound to localhost) scraped by Grafana Cloud free or Google Managed Prometheus for rooms, participants, CPU and bandwidth; VM CPU, disk and network alerts; certificate expiry alert; a small synthetic check that creates a room and joins it once an hour. Backups are not needed (rooms are ephemeral), but keep the `livekit.yaml` and compose file in a private repo or secret store. Use unattended security updates and pin the LiveKit image version, with a tested upgrade routine.
+- **Switch between Cloud and self-hosted.** One server-level setting: `LIVEKIT_URL` plus the key and secret, nothing else changes. Add `LIVEKIT_MODE` (`cloud` | `self_hosted`, default `cloud`) only for behaviour that differs: the minute caps, cost estimates in `docs/costs.md` and the health page. Rooms already running stay on the server they started on (room records store which LiveKit URL created them); the change applies to new rooms. Clients take the URL from the token response, so SDKs and products need no change. Roll back by setting the three variables back, so keep the Cloud project alive until self-hosting has run for a month. The server health check also reports which LiveKit it uses and whether it is reachable.
+- **Who pays and caps.** Users never need their own LiveKit key. Per-user audio minute caps and the per-product LiveKit caps stay on the hosted OpenBlah server, even when self-hosted, because the VM has a finite capacity (concurrent rooms and bandwidth) and a runaway product could starve others; the cap's reason shifts from the plan's price to capacity. Self-hosters of OpenBlah bring their own LiveKit (Cloud or their own VM), with the same env variables, and set their own caps or none.
+- **Not in scope now.** No code change in this task. Do it after the free tier shows real usage; a task below covers the work.
+
 ## Risks
 
+- Self-hosted LiveKit makes the owner responsible for uptime, patching and security of a public server; a single VM is a single point of failure for all calls (mitigation: keep the Cloud project as a fallback via the switch).
 - Friction: forcing a key on first use will lose many users; mode 3 and the free Gemini suggestion soften it.
 - Free-tier Gemini data may be used by Google: sensitive products (TeraPay) must use paid keys; `user_key` with `sensitive` rooms needs the paid-tier confirmation already in the key flow.
 - Users are not technical; the sheet needs plain steps and a link straight to the key page.
@@ -113,6 +130,20 @@ Assumed: Count only.
 Type: business
 Answer: _open_
 
+### Q9. Which VM provider should host the self-hosted LiveKit?
+
+Context: it decides whether the monthly cost is truly flat (egress on GCE is metered, a VPS usually includes traffic) and where the owner already has an account.
+Assumed: A VPS (Hostinger or similar) near London first, a second region for Brazil later only if latency needs it; GCE if the owner prefers a single cloud.
+Type: business
+Answer: _open_
+
+### Q10. When should the move off LiveKit Cloud happen?
+
+Context: self-hosting adds work and risk; it pays off only above the free plan.
+Assumed: Only when the free tier is about 70% used for two months, or a product needs more than its limits; not before.
+Type: business
+Answer: _open_
+
 ## Suggested tasks
 
 1. Who-pays setting and resolution: `whoPays` product setting (`product`, `user_key`, `product_trial`), new key resolution order, `key_required` error, tests that each mode and the switch behave.
@@ -121,3 +152,4 @@ Answer: _open_
 4. Add-your-own-key sheet in the SDKs and `key_required` handling (after 1): Gemini-first with free-tier warning, OpenAI and Claude, plain "add your own key to keep using voice" message, `key-status` pre-check.
 5. LiveKit minute caps (after 1): per-product and global caps, alert, `livekit_cap` error and message.
 6. Docs (after 3): host-integration, keys-and-trial, costs, Housekeeper guide, consumer-subscription note.
+7. Self-hosted LiveKit runbook and switch (not urgent, after 5): `docs/self-host-livekit.md` with the VM, firewall, TLS, TURN and monitoring steps and a compose/`livekit.yaml` template, `LIVEKIT_MODE` and the room record's LiveKit URL, health check reporting, and a test of the switch. Owner steps (create the VM, DNS, secrets) use the manual marker.
