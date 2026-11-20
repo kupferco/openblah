@@ -5,7 +5,7 @@ import { FirestoreStorage } from "./firestore.js";
 import { KeyCipher } from "./crypto.js";
 import { McpOAuthService, parsePreregistered } from "./mcp-oauth.js";
 import { apiKeyId, KeyStore, parseProductKeys, type ProviderKeys } from "./keys.js";
-import { LLM_NAMES, type LlmName, type SettingsLevel } from "./settings.js";
+import { isWhoPays, LLM_NAMES, type LlmName, type SettingsLevel } from "./settings.js";
 import { RealLiveKit } from "./livekit.js";
 import { HttpWorkerWaker } from "./worker.js";
 import { MemoryStorage } from "./storage.js";
@@ -116,6 +116,17 @@ export function createAppFromEnv(env: Env = process.env) {
       }
     : undefined;
 
+  // Who pays for a product that has not chosen. Self-hosted servers behave as `product`.
+  const rawWho = env.OPENBLAH_DEFAULT_WHO_PAYS;
+  if (rawWho && !isWhoPays(rawWho)) {
+    throw new Error("OPENBLAH_DEFAULT_WHO_PAYS must be product, user_key or product_trial");
+  }
+  const defaultWhoPays = isWhoPays(rawWho)
+    ? rawWho
+    : env.OPENBLAH_SELF_HOSTED === "true"
+      ? "product"
+      : undefined;
+
   const usage = new UsageService(storage, {
     prices: parsePrices(env.OPENBLAH_PRICES),
     monthlyCapGbp: num("OPENBLAH_MONTHLY_CAP_GBP", 50),
@@ -135,6 +146,7 @@ export function createAppFromEnv(env: Env = process.env) {
   return createApp({
     storage,
     serverSettings,
+    ...(defaultWhoPays ? { defaultWhoPays } : {}),
     usage,
     livekit,
     apiKeys,

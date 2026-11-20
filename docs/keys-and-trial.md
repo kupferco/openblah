@@ -10,9 +10,29 @@ The server picks one mode per room, in this order:
    in the environment (or a `"*"` entry).
 3. **Trial**: OpenBlah's hosted keys (`OPENBLAH_TRIAL_*_API_KEY`), for signed-in accounts only.
 
-If none applies, starting the agent answers an error (`409 no_key`, `401 sign_in_required`
-or `402 trial_exhausted`). If no mode is configured at all, the worker keeps using its own
+If none applies, starting the agent answers an error (`409 no_key`, `401 sign_in_required`,
+`402 trial_exhausted` or `402 key_required`). If no mode is configured at all, the worker keeps using its own
 environment keys, as before.
+
+## Who pays (per product)
+
+A product has a setting `whoPays`, changed with `PUT /v1/product/settings`
+(`{ "settings": { "whoPays": "user_key" } }`, product API key only; rooms, users and the
+settings MCP tool cannot set it):
+
+- `product`: the product's key pays for everyone; a user's own key is not used.
+- `user_key`: only the host's own key; the product's key is never used.
+- `product_trial`: the host's own key if saved, else the product's key while the per-user
+  allowance lasts (the counter and allowance come in a later part of plan 370; until then the
+  allowance counts as used).
+
+When the mode refuses, starting voice answers `402 key_required` with `reason`
+`product_not_paying` or `trial_used`. The change applies to the next voice start; calls
+already running finish. Text chat is not affected.
+
+A product with no setting keeps the order above (BYOK, product key, trial) unless the server
+sets `OPENBLAH_DEFAULT_WHO_PAYS` (`user_key` for new products; self-hosted servers
+(`OPENBLAH_SELF_HOSTED=true`) default to `product`).
 
 ## BYOK
 
