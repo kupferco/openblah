@@ -4,10 +4,13 @@ React hooks and the `<OpenBlahRoom />` component of `@openblah/web`. Import from
 
 ## Interfaces
 
+- [KeySheetTexts](interfaces/KeySheetTexts.md)
+- [OpenBlahAddKeySheetProps](interfaces/OpenBlahAddKeySheetProps.md)
 - [OpenBlahLabels](interfaces/OpenBlahLabels.md)
 - [OpenBlahRoomBaseProps](interfaces/OpenBlahRoomBaseProps.md)
 - [OpenBlahRoomProps](interfaces/OpenBlahRoomProps.md)
 - [OpenBlahTheme](interfaces/OpenBlahTheme.md)
+- [UseAddKeySheetOptions](interfaces/UseAddKeySheetOptions.md)
 - [UseHistoryOptions](interfaces/UseHistoryOptions.md)
 - [UseOnboardingOptions](interfaces/UseOnboardingOptions.md)
 
@@ -18,15 +21,18 @@ React hooks and the `<OpenBlahRoom />` component of `@openblah/web`. Import from
 
 ## Variables
 
+- [defaultKeySheetTexts](variables/defaultKeySheetTexts.md)
 - [defaultLabels](variables/defaultLabels.md)
 - [defaultTheme](variables/defaultTheme.md)
 
 ## Functions
 
+- [OpenBlahAddKeySheet](functions/OpenBlahAddKeySheet.md)
 - [OpenBlahProvider](functions/OpenBlahProvider.md)
 - [OpenBlahRoom](functions/OpenBlahRoom.md)
 - [resolveLabels](functions/resolveLabels.md)
 - [resolveTheme](functions/resolveTheme.md)
+- [useAddKeySheet](functions/useAddKeySheet.md)
 - [useAgentControl](functions/useAgentControl.md)
 - [useAgentState](functions/useAgentState.md)
 - [useAiPause](functions/useAiPause.md)
@@ -36,6 +42,7 @@ React hooks and the `<OpenBlahRoom />` component of `@openblah/web`. Import from
 - [useHostControls](functions/useHostControls.md)
 - [useInviteJoin](functions/useInviteJoin.md)
 - [useInviteRequests](functions/useInviteRequests.md)
+- [useKeyStatus](functions/useKeyStatus.md)
 - [useMute](functions/useMute.md)
 - [useOnboarding](functions/useOnboarding.md)
 - [useParticipants](functions/useParticipants.md)

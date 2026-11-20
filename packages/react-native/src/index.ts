@@ -10,3 +10,4 @@ export { CALL_APPLE_AUDIO, createCallAudio, type AudioSessionLike } from "./audi
 export { shareInvite, type ShareInviteOptions, type ShareLike } from "./invite.js";
 export { connectMcpInApp, type ConnectMcpInAppOptions } from "./mcp.js";
 export { OpenBlahRoom, type OpenBlahRoomProps } from "./room.js";
+export { OpenBlahAddKeySheet, type OpenBlahAddKeySheetProps } from "./key-sheet.js";

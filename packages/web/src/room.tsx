@@ -122,6 +122,19 @@ export function OpenBlahRoom(props: OpenBlahRoomProps) {
         </p>
       )}
 
+      {props.keyRequired && (
+        <div role="alert" style={card(t.warning)}>
+          <p style={{ margin: 0 }}>
+            {props.keyRequired.reason === "trial_used" ? l.keyRequiredTrialUsed : l.keyRequired}
+          </p>
+          {props.onAddKey && (
+            <button style={{ ...button, marginTop: t.spacing }} onClick={props.onAddKey}>
+              {l.addKey}
+            </button>
+          )}
+        </div>
+      )}
+
       {v.error && (
         <p role="alert" style={{ color: t.danger }}>
           {v.error}

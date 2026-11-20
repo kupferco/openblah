@@ -56,7 +56,8 @@ export interface UsageReport {
   llmOutputTokens?: number;
 }
 
-export type StopReason = "max_duration" | "idle_timeout" | "host_cap" | "user_cap" | "cost_cap";
+export type StopReason =
+  "max_duration" | "idle_timeout" | "host_cap" | "user_cap" | "cost_cap" | "livekit_cap";
 
 export interface RoomUsage {
   roomId: string;
@@ -84,6 +85,10 @@ export interface UsageLimits {
   userMonthlyMinutes: number;
   /** Per host per month, in minutes of agent audio. 0 = no cap. */
   hostMonthlyMinutes: number;
+  /** Per product per month, in LiveKit participant minutes. 0 or unset = no cap. */
+  productLivekitMonthlyMinutes?: number;
+  /** All products together per month, in LiveKit participant minutes. 0 or unset = no cap. */
+  globalLivekitMonthlyMinutes?: number;
 }
 
 export const DEFAULT_LIMITS: UsageLimits = {
@@ -101,6 +106,22 @@ export interface CostAlert {
   capGbp: number;
 }
 
+export interface LivekitAlert {
+  event: "livekit_alert";
+  level: "warning_80" | "hard_cap";
+  scope: "global" | "product";
+  /** The product API key id, for scope `product`. */
+  productId?: string;
+  month: string;
+  minutes: number;
+  capMinutes: number;
+}
+
+export type UsageAlert = CostAlert | LivekitAlert;
+
+/** Which LiveKit cap is reached. */
+export type LivekitCapScope = "product" | "global";
+
 export interface UsageOptions {
   prices?: PriceTable;
   limits?: UsageLimits;
@@ -110,7 +131,7 @@ export interface UsageOptions {
   warnFraction?: number;
   now?: () => Date;
   /** Receives each alert once per month. Default: a structured log line. */
-  notify?: (alert: CostAlert) => Promise<void> | void;
+  notify?: (alert: UsageAlert) => Promise<void> | void;
 }
 
 const enc = encodeURIComponent;
@@ -135,7 +156,7 @@ export function parsePrices(raw: string | undefined): PriceTable {
 export function webhookNotifier(
   url: string,
   fetchFn: typeof fetch = fetch,
-): (a: CostAlert) => Promise<void> {
+): (a: UsageAlert) => Promise<void> {
   return async (alert) => {
     try {
       await fetchFn(url, {
@@ -159,7 +180,7 @@ export class UsageService {
   readonly monthlyCapGbp: number;
   private readonly warnFraction: number;
   private readonly now: () => Date;
-  private readonly notify: (a: CostAlert) => Promise<void> | void;
+  private readonly notify: (a: UsageAlert) => Promise<void> | void;
 
   constructor(
     private readonly storage: Storage,
@@ -211,6 +232,29 @@ export class UsageService {
 
   async userMinutesThisMonth(userId: string): Promise<number> {
     return (await this.storage.getUsage(`month:${this.month()}:user:${enc(userId)}`)) / 60;
+  }
+
+  async livekitMinutesThisMonth(productId?: string): Promise<number> {
+    const key = productId ? `product:${enc(productId)}` : "global";
+    return (await this.storage.getUsage(`month:${this.month()}:lk:${key}`)) / 60;
+  }
+
+  /** The per-product cap does not apply to the standalone app or to rooms with no product. */
+  private productCapped(room: Pick<Room, "productKeyId">): string | undefined {
+    const id = room.productKeyId;
+    return id && id !== "standalone" ? id : undefined;
+  }
+
+  /**
+   * Whether this room's product, or the whole server, has used its LiveKit minutes this month.
+   * Checked before a token is issued or an agent starts. Null when allowed.
+   */
+  async checkLivekit(room: Pick<Room, "productKeyId">): Promise<LivekitCapScope | null> {
+    const { globalLivekitMonthlyMinutes: g = 0, productLivekitMonthlyMinutes: p = 0 } = this.limits;
+    if (g > 0 && (await this.livekitMinutesThisMonth()) >= g) return "global";
+    const id = this.productCapped(room);
+    if (p > 0 && id && (await this.livekitMinutesThisMonth(id)) >= p) return "product";
+    return null;
   }
 
   /** Check the monthly minute caps before an agent starts. Null when allowed. */
@@ -286,6 +330,10 @@ export class UsageService {
     for (const [user, v] of Object.entries(participantSeconds))
       await add(`month:${month}:user:${enc(user)}`, v);
     await add(`month:${month}:host:${enc(room.hostUserId)}`, num(report.agentSeconds));
+    await add(`month:${month}:lk:global`, delta.participantSeconds);
+    const capId = this.productCapped(room);
+    if (capId) await add(`month:${month}:lk:product:${enc(capId)}`, delta.participantSeconds);
+    await this.livekitAlerts(month, capId);
 
     const c = this.cost(delta);
     await add(`month:${month}:cost`, c.total);
@@ -315,9 +363,43 @@ export class UsageService {
         }
       }
     }
+    if (!stop && (await this.checkLivekit(room))) stop = "livekit_cap";
     if (!stop && hosted && this.monthlyCapGbp > 0 && hostedCost >= this.monthlyCapGbp)
       stop = "cost_cap";
     return stop ? { available: false, stop } : { available: true };
+  }
+
+  /** Warn at 80% and at the cap, once per month for the server and once per product. */
+  private async livekitAlerts(month: string, productId: string | undefined): Promise<void> {
+    const { globalLivekitMonthlyMinutes: g = 0, productLivekitMonthlyMinutes: p = 0 } = this.limits;
+    const check = async (scope: "global" | "product", cap: number, id?: string) => {
+      if (cap <= 0) return;
+      const minutes = await this.livekitMinutesThisMonth(id);
+      const tag = id ? `product:${enc(id)}` : "global";
+      for (const [level, at, flag] of [
+        ["warning_80", cap * this.warnFraction, "alert80"],
+        ["hard_cap", cap, "alert100"],
+      ] as const) {
+        if (minutes < at) continue;
+        if ((await this.storage.addUsage(`month:${month}:lkalert:${tag}:${flag}`, 1)) !== 1)
+          continue;
+        try {
+          await this.notify({
+            event: "livekit_alert",
+            level,
+            scope,
+            ...(id ? { productId: id } : {}),
+            month,
+            minutes: Math.round(minutes * 10) / 10,
+            capMinutes: cap,
+          });
+        } catch {
+          /* alerting must not break a call */
+        }
+      }
+    };
+    await check("global", g);
+    if (productId) await check("product", p, productId);
   }
 
   /** Fire each alert once per month: addUsage on a flag is atomic, only the first caller sees 1. */

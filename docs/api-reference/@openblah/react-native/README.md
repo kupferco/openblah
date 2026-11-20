@@ -6,6 +6,7 @@ Same client and hooks as `@openblah/web`. Needs an Expo dev build, not Expo Go.
 ## Interfaces
 
 - [AudioSessionLike](interfaces/AudioSessionLike.md)
+- [OpenBlahAddKeySheetProps](interfaces/OpenBlahAddKeySheetProps.md)
 - [OpenBlahRoomProps](interfaces/OpenBlahRoomProps.md)
 - [ShareInviteOptions](interfaces/ShareInviteOptions.md)
 - [ShareLike](interfaces/ShareLike.md)
@@ -23,6 +24,7 @@ Same client and hooks as `@openblah/web`. Needs an Expo dev build, not Expo Go.
 - [connectMcpInApp](functions/connectMcpInApp.md)
 - [createCallAudio](functions/createCallAudio.md)
 - [createOpenBlahClient](functions/createOpenBlahClient.md)
+- [OpenBlahAddKeySheet](functions/OpenBlahAddKeySheet.md)
 - [OpenBlahRoom](functions/OpenBlahRoom.md)
 - [registerOpenBlahGlobals](functions/registerOpenBlahGlobals.md)
 - [shareInvite](functions/shareInvite.md)
@@ -119,6 +121,12 @@ Re-exports [CreateInviteOptions](../web/interfaces/CreateInviteOptions.md)
 
 ---
 
+### defaultKeySheetTexts
+
+Re-exports [defaultKeySheetTexts](../web/react/variables/defaultKeySheetTexts.md)
+
+---
+
 ### defaultLabels
 
 Re-exports [defaultLabels](../web/react/variables/defaultLabels.md)
@@ -170,6 +178,30 @@ Re-exports [KeyCheckResult](../web/interfaces/KeyCheckResult.md)
 ### KeyProviderName
 
 Re-exports [KeyProviderName](../web/type-aliases/KeyProviderName.md)
+
+---
+
+### KeyRequiredError
+
+Re-exports [KeyRequiredError](../web/classes/KeyRequiredError.md)
+
+---
+
+### KeyRequiredReason
+
+Re-exports [KeyRequiredReason](../web/type-aliases/KeyRequiredReason.md)
+
+---
+
+### KeySheetTexts
+
+Re-exports [KeySheetTexts](../web/react/interfaces/KeySheetTexts.md)
+
+---
+
+### KeyStatus
+
+Re-exports [KeyStatus](../web/interfaces/KeyStatus.md)
 
 ---
 
@@ -329,6 +361,18 @@ Re-exports [TrialInfo](../web/interfaces/TrialInfo.md)
 
 ---
 
+### useAddKeySheet
+
+Re-exports [useAddKeySheet](../web/react/functions/useAddKeySheet.md)
+
+---
+
+### UseAddKeySheetOptions
+
+Re-exports [UseAddKeySheetOptions](../web/react/interfaces/UseAddKeySheetOptions.md)
+
+---
+
 ### useAgentControl
 
 Re-exports [useAgentControl](../web/react/functions/useAgentControl.md)
@@ -392,6 +436,12 @@ Re-exports [useInviteJoin](../web/react/functions/useInviteJoin.md)
 ### useInviteRequests
 
 Re-exports [useInviteRequests](../web/react/functions/useInviteRequests.md)
+
+---
+
+### useKeyStatus
+
+Re-exports [useKeyStatus](../web/react/functions/useKeyStatus.md)
 
 ---
 
