@@ -15,5 +15,7 @@ export const config = {
   /** Google OAuth client id (iOS) for "Continue with Google". */
   googleClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ?? "",
   /** Where the email link opens the app: needs to be an authorised Firebase domain. */
+  /** Where the browser goes after an MCP server sign-in (must be allowed in the server's settings). */
+  mcpReturnUrl: process.env.EXPO_PUBLIC_MCP_RETURN_URL ?? "",
   emailLinkUrl: process.env.EXPO_PUBLIC_EMAIL_LINK_URL ?? "",
 };

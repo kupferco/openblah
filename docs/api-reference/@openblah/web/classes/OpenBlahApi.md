@@ -314,6 +314,28 @@ A guest reads the call they joined, read-only, through their invite token (30 da
 
 ---
 
+### getRoomMcpServers()
+
+> **getRoomMcpServers**(`roomId`, `actorUserId`): `Promise`\<`string`[] \| `null`\>
+
+The saved servers switched on for this room; `null` means all of the host's servers.
+
+#### Parameters
+
+##### roomId
+
+`string`
+
+##### actorUserId
+
+`string`
+
+#### Returns
+
+`Promise`\<`string`[] \| `null`\>
+
+---
+
 ### getRoomSettings()
 
 > **getRoomSettings**(`roomId`, `viewerUserId`): `Promise`\<[`ModelSettings`](../interfaces/ModelSettings.md)\>
@@ -554,6 +576,32 @@ Room settings: the model, language and agent name for one room (host only to cha
 
 ---
 
+### setRoomMcpServers()
+
+> **setRoomMcpServers**(`roomId`, `actorUserId`, `enabledConnectionIds`): `Promise`\<`string`[] \| `null`\>
+
+Host: choose which saved servers are on in this room (`null` = all). Next agent join.
+
+#### Parameters
+
+##### roomId
+
+`string`
+
+##### actorUserId
+
+`string`
+
+##### enabledConnectionIds
+
+`string`[] \| `null`
+
+#### Returns
+
+`Promise`\<`string`[] \| `null`\>
+
+---
+
 ### startCall()
 
 > **startCall**(`opts`): `Promise`\<[`StartedCall`](../interfaces/StartedCall.md)\>
@@ -575,6 +623,12 @@ Start a call as the signed-in user (you are the host). Returns the room and a jo
 ###### displayName
 
 `string`
+
+###### mcpConnectionIds?
+
+`string`[]
+
+Which of the person's saved MCP servers are on in this room. Leave out for all.
 
 #### Returns
 

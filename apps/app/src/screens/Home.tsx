@@ -6,11 +6,15 @@ export function HomeScreen(props: {
   agentName: string;
   onStart: () => void;
   onSettings: () => void;
+  onHistory: () => void;
+  onTools: () => void;
 }) {
   return (
     <Screen title={`Hi ${props.name}`}>
       <Body muted>{`${props.agentName} is ready when you are.`}</Body>
       <Button primary label="Start talking" onPress={props.onStart} />
+      <Button label="Call history" onPress={props.onHistory} />
+      <Button label="Tools" onPress={props.onTools} />
       <Button label="Settings" onPress={props.onSettings} />
     </Screen>
   );

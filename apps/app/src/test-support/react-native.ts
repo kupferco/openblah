@@ -30,3 +30,11 @@ export const AppState = {
     return { remove: () => appState.handlers.delete(h) };
   },
 };
+
+export const shared: { messages: string[]; dismiss: boolean } = { messages: [], dismiss: false };
+export const Share = {
+  share: async (c: { message: string }) => {
+    shared.messages.push(c.message);
+    return { action: shared.dismiss ? "dismissedAction" : "sharedAction" };
+  },
+};
