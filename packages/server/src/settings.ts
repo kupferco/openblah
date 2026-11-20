@@ -29,6 +29,8 @@ export const isWhoPays = (v: unknown): v is WhoPays =>
 export interface SettingsLevel {
   /** Product level only: who pays for voice. Never read from a room or user level. */
   whoPays?: WhoPays;
+  /** Product level only: agent audio seconds each user gets on the product's key in `product_trial` (default 300). */
+  trialSeconds?: number;
   llm?: ModelChoice;
   /** Spoken-language override. Absent = follow what people speak. */
   language?: Language;
@@ -75,6 +77,8 @@ export interface SettingsPatch {
   agentName?: string;
   /** Product level only. */
   whoPays?: WhoPays;
+  /** Product level only: per-user trial allowance in seconds (0 to 86400). */
+  trialSeconds?: number;
 }
 
 const MODEL_ID = /^[\w.:/-]{1,80}$/;
@@ -129,6 +133,16 @@ export function parsePatch(
     }
     patch.whoPays = r.whoPays;
   }
+  if (r.trialSeconds !== undefined) {
+    if (!opts.productLevel) {
+      return { ok: false, error: "trialSeconds can only be set by the product owner" };
+    }
+    const t = r.trialSeconds;
+    if (typeof t !== "number" || !Number.isInteger(t) || t < 0 || t > 86_400) {
+      return { ok: false, error: "trialSeconds must be a whole number from 0 to 86400" };
+    }
+    patch.trialSeconds = t;
+  }
   if (Object.keys(patch).length === 0) return { ok: false, error: "nothing to change" };
   return { ok: true, patch };
 }
@@ -140,6 +154,7 @@ export function applyPatch(level: SettingsLevel | null | undefined, patch: Setti
   if (patch.language === null) delete next.language;
   else if (patch.language) next.language = patch.language;
   if (patch.whoPays) next.whoPays = patch.whoPays;
+  if (patch.trialSeconds !== undefined) next.trialSeconds = patch.trialSeconds;
   return next;
 }
 
@@ -159,6 +174,9 @@ export function describePatch(patch: SettingsPatch): string {
   else if (patch.language)
     parts.push(`speak ${patch.language === "pt" ? "Portuguese" : "English"}`);
   if (patch.whoPays) parts.push(`set who pays to ${patch.whoPays}`);
+  if (patch.trialSeconds !== undefined) {
+    parts.push(`set the free trial to ${Math.round(patch.trialSeconds / 6) / 10} minutes per user`);
+  }
   if (patch.agentName) parts.push(`rename the agent to ${patch.agentName}`);
   return parts.join(" and ");
 }

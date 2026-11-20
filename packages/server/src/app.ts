@@ -49,7 +49,7 @@ import {
   type SettingsPatch,
 } from "./settings.js";
 import { settingsMcpApp, type ToolOutcome } from "./settings-mcp.js";
-import type { TrialService } from "./trial.js";
+import { DEFAULT_PRODUCT_TRIAL_SECONDS, ProductTrialService, type TrialService } from "./trial.js";
 import { UsageService, type UsageReport } from "./usage.js";
 import type {
   AgentMode,
@@ -104,8 +104,10 @@ export interface AppDeps {
   serverSettings?: SettingsLevel;
   /** Who pays for a product that has not chosen (new products: `user_key`). Unset keeps the older key order. */
   defaultWhoPays?: WhoPays;
-  /** Per-product trial allowance check for `product_trial` (without it the allowance counts as used). */
+  /** Replaces the built-in per-product allowance check (tests). Default: the per-user, per-product counter. */
   productTrial?: KeyResolverDeps["productTrial"];
+  /** Allowance in seconds for a product that has not set `trialSeconds`. Default 300. */
+  defaultProductTrialSeconds?: number;
   /** Checks a key with its vendor. Default: a free "list models" call; mocked in tests. */
   keyChecker?: KeyChecker;
   /** Limits for the public invite endpoints. */
@@ -212,11 +214,26 @@ export function createApp(deps: AppDeps): Hono {
 
   const keyModesConfigured =
     !!deps.keyStore || Object.keys(deps.productKeys ?? {}).length > 0 || !!deps.trial;
+  const productTrialCounter = new ProductTrialService(storage);
+  const productTrialSeconds = async (productKeyId: string) =>
+    (await storage.getSettings(`product:${productKeyId}`))?.trialSeconds ??
+    deps.defaultProductTrialSeconds ??
+    DEFAULT_PRODUCT_TRIAL_SECONDS;
+  const whoPaysOf = async (room: Room): Promise<WhoPays | null> =>
+    room.productKeyId
+      ? ((await storage.getSettings(`product:${room.productKeyId}`))?.whoPays ??
+        deps.defaultWhoPays ??
+        null)
+      : null;
   const resolve = async (room: Room) =>
     resolveRoomKeys(
       {
         storage,
-        productTrial: deps.productTrial,
+        productTrial: deps.productTrial ?? {
+          hasAllowance: async (r, pid) =>
+            (await productTrialCounter.status(pid, r.hostUserId, await productTrialSeconds(pid)))
+              .available,
+        },
         keyStore: deps.keyStore ?? null,
         productKeys: deps.productKeys ?? {},
         trial: {
@@ -232,11 +249,7 @@ export function createApp(deps: AppDeps): Hono {
       },
       room,
       room.productKeyId,
-      room.productKeyId
-        ? ((await storage.getSettings(`product:${room.productKeyId}`))?.whoPays ??
-            deps.defaultWhoPays ??
-            null)
-        : null,
+      await whoPaysOf(room),
     );
   const refusalBody = (r: Extract<Resolution, { ok: false }>) => ({
     error: r.message,
@@ -1919,6 +1932,26 @@ export function createApp(deps: AppDeps): Hono {
       llmOutputTokens: llmOut,
     };
     const verdict = await usage.record(room, report, hosted);
+    // `product_trial`: seconds on the product's key count against this user's allowance.
+    if (
+      room.productKeyId &&
+      r.ok &&
+      r.mode === "product" &&
+      (await whoPaysOf(room)) === "product_trial"
+    ) {
+      const pt = await productTrialCounter.record(
+        room.productKeyId,
+        room.hostUserId,
+        seconds,
+        await productTrialSeconds(room.productKeyId),
+      );
+      return c.json({
+        counted: true,
+        ...pt,
+        available: pt.available && verdict.available,
+        stop: verdict.stop ?? (pt.available ? undefined : "trial_used"),
+      });
+    }
     if (!hosted || !deps.trial) {
       return c.json({ counted: false, available: verdict.available, stop: verdict.stop });
     }

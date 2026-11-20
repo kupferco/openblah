@@ -37,8 +37,13 @@ export type {
   Resolution,
   StoredKey,
 } from "./keys.js";
-export { TrialService, DEFAULT_TRIAL_LIMITS } from "./trial.js";
-export type { TrialLimits, TrialStatus } from "./trial.js";
+export {
+  TrialService,
+  ProductTrialService,
+  DEFAULT_TRIAL_LIMITS,
+  DEFAULT_PRODUCT_TRIAL_SECONDS,
+} from "./trial.js";
+export type { TrialLimits, TrialStatus, ProductTrialStatus } from "./trial.js";
 export { FirebaseTokenVerifier, PREVIEW_TEST_EMAIL } from "./accounts.js";
 export type { TokenVerifier, UserRecord, VerifiedUser } from "./accounts.js";
 export { OpenBlahServerClient } from "./client.js";
