@@ -1667,6 +1667,27 @@ export function createApp(deps: AppDeps): Hono {
   const byApiKey = new Hono();
   mountKeyRoutes(byApiKey, (c) => c.req.param("userId") as string);
   mountMcpRoutes(byApiKey, (c) => c.req.param("userId") as string);
+  // Pre-check for the product's own UI: would this user's next voice start need their own key?
+  // Same resolution as a real start, without a room. Never returns keys.
+  byApiKey.get("/key-status", async (c) => {
+    const userId = c.req.param("userId") as string;
+    const r = await resolve({
+      id: "key-status",
+      hostUserId: userId,
+      hostDisplayName: "",
+      agent: "on",
+      agentName: "",
+      sensitive: false,
+      metadata: {},
+      createdAt: new Date().toISOString(),
+      productKeyId: keyIdOf(c),
+    });
+    if (r.ok || !keyModesConfigured) return c.json({ status: "ok" });
+    return c.json({
+      status: "needs_key",
+      ...(r.code === "key_required" ? { reason: r.reason } : {}),
+    });
+  });
   v1.route("/users/:userId", byApiKey);
 
   // Standalone app users: a verified Firebase ID token, not the product API key.

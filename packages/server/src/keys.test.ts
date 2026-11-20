@@ -414,4 +414,15 @@ describe("who pays", () => {
       (await call("PUT", "/v1/users/u1/settings", { settings: { whoPays: "product" } })).status,
     ).toBe(400);
   });
+  it("key-status pre-checks a user without a room", async () => {
+    const { call, saveAll } = setup({ product: true });
+    const status = async () => (await call("GET", "/v1/users/u1/key-status")).json();
+    await setMode(call, "user_key");
+    expect(await status()).toEqual({ status: "needs_key", reason: "product_not_paying" });
+    await saveAll("u1", "paid");
+    expect(await status()).toEqual({ status: "ok" });
+    await setMode(call, "product");
+    expect(await status()).toEqual({ status: "ok" });
+    expect((await call("GET", "/v1/users/u1/key-status", undefined, null)).status).toBe(401);
+  });
 });

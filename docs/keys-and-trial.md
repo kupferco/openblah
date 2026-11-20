@@ -30,6 +30,16 @@ When the mode refuses, starting voice answers `402 key_required` with `reason`
 `product_not_paying` or `trial_used`. The change applies to the next voice start; calls
 already running finish. Text chat is not affected.
 
+In the SDKs (`@openblah/web`, `@openblah/react-native`) the API client throws a typed
+`KeyRequiredError` (`reason`) for it. Pass it to `<OpenBlahRoom keyRequired={{ reason }} onAddKey={...} />`
+to show "Add your own key to keep using voice", and open `<OpenBlahAddKeySheet api userId />`: Gemini
+first (free key, with the free-tier warning, refused in `sensitive` rooms unless the key is paid),
+then OpenAI and Claude. The sheet is themable (`theme`, `texts`) and is the same flow the standalone
+app uses. `GET /v1/users/:userId/key-status` (`{ status: "ok" | "needs_key", reason? }`,
+`api.getKeyStatus(userId)`, `useKeyStatus`) lets the product show the banner before the user taps.
+Consumer subscriptions (ChatGPT Plus, Claude app, Gemini app) cannot power another app, so an API
+key is needed; the sheet says so.
+
 A product with no setting keeps the order above (BYOK, product key, trial) unless the server
 sets `OPENBLAH_DEFAULT_WHO_PAYS` (`user_key` for new products; self-hosted servers
 (`OPENBLAH_SELF_HOSTED=true`) default to `product`).

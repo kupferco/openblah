@@ -4,3 +4,4 @@
  */
 export * from "@openblah/core/react";
 export { OpenBlahRoom, type OpenBlahRoomProps } from "./room.js";
+export { OpenBlahAddKeySheet, type OpenBlahAddKeySheetProps } from "./key-sheet.js";
