@@ -1,0 +1,27 @@
+# XcodeGen spec: `brew install xcodegen && xcodegen generate` creates WatchSpike.xcodeproj.
+name: WatchSpike
+options:
+  bundleIdPrefix: dev.openblah.spike
+  deploymentTarget:
+    watchOS: "10.0"
+targets:
+  WatchSpike:
+    type: application
+    platform: watchOS
+    sources: [WatchSpike]
+    info:
+      path: WatchSpike/Info.plist
+      properties:
+        WKApplication: true
+        NSMicrophoneUsageDescription: Talk to the OpenBlah agent.
+        UIBackgroundModes: [audio]
+    settings:
+      GENERATE_INFOPLIST_FILE: NO
+      PRODUCT_BUNDLE_IDENTIFIER: dev.openblah.spike.watch
+    # Route A check: uncomment to see whether LiveKit's Swift SDK builds for watchOS.
+    # dependencies:
+    #   - package: LiveKit
+packages:
+  LiveKit:
+    url: https://github.com/livekit/client-sdk-swift
+    from: 2.0.0
