@@ -554,6 +554,34 @@ Room settings: the model, language and agent name for one room (host only to cha
 
 ---
 
+### startCall()
+
+> **startCall**(`opts`): `Promise`\<[`StartedCall`](../interfaces/StartedCall.md)\>
+
+Start a call as the signed-in user (you are the host). Returns the room and a join token.
+
+#### Parameters
+
+##### opts
+
+###### agent?
+
+`"on"` \| `"off"` \| `"ask"`
+
+###### agentName?
+
+`string`
+
+###### displayName
+
+`string`
+
+#### Returns
+
+`Promise`\<[`StartedCall`](../interfaces/StartedCall.md)\>
+
+---
+
 ### startMcpConnection()
 
 > **startMcpConnection**(`url`, `opts?`): `Promise`\<\{ `authorizationUrl`: `string`; `id`: `string`; \}\>
@@ -735,3 +763,15 @@ Change your model or language setting. `llm: null` goes back to the default.
 #### Returns
 
 `Promise`\<[`ModelSettings`](../interfaces/ModelSettings.md)\>
+
+---
+
+### warmup()
+
+> **warmup**(): `Promise`\<`"warming"` \| `"warm"` \| `"unavailable"` \| `"limited"`\>
+
+Ask the server to wake the agent worker for the signed-in user. Never throws.
+
+#### Returns
+
+`Promise`\<`"warming"` \| `"warm"` \| `"unavailable"` \| `"limited"`\>

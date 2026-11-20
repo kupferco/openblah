@@ -446,6 +446,24 @@ the agent confirms it.
 
 ---
 
+### setMode()
+
+> **setMode**(`mode`): `Promise`\<`void`\>
+
+Switch the agent's mode. Direct is host only (the agent ignores it from anyone else).
+
+#### Parameters
+
+##### mode
+
+[`RoomMode`](../type-aliases/RoomMode.md)
+
+#### Returns
+
+`Promise`\<`void`\>
+
+---
+
 ### setMuted()
 
 > **setMuted**(`muted`): `Promise`\<`void`\>

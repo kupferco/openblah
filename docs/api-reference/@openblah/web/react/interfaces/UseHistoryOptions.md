@@ -4,7 +4,7 @@
 
 ### api
 
-> **api**: [`OpenBlahApiOptions`](../../interfaces/OpenBlahApiOptions.md) \| [`OpenBlahApi`](../../classes/OpenBlahApi.md)
+> **api**: [`OpenBlahApi`](../../classes/OpenBlahApi.md) \| [`OpenBlahApiOptions`](../../interfaces/OpenBlahApiOptions.md)
 
 ---
 

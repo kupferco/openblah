@@ -9,6 +9,7 @@ export default tseslint.config(
       "**/node_modules/**",
       "**/coverage/**",
       "apps/example/{ios,android,.expo}/**",
+      "apps/app/{ios,android,.expo}/**",
       "apps/mock/**", // static browser-only design mock
     ],
   },
@@ -50,7 +51,12 @@ export default tseslint.config(
   },
   {
     // Expo loads config plugins with require(), so they are CommonJS.
-    files: ["**/plugin/**/*.js", "**/*.cjs", "apps/example/metro.config.js"],
+    files: [
+      "**/plugin/**/*.js",
+      "**/*.cjs",
+      "apps/example/metro.config.js",
+      "apps/app/metro.config.js",
+    ],
     languageOptions: {
       globals: { module: "writable", require: "readonly", __dirname: "readonly" },
     },

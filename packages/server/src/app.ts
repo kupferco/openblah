@@ -1640,6 +1640,70 @@ export function createApp(deps: AppDeps): Hono {
     const u = await storage.getUser(c.get("uid"));
     return c.json({ id: u?.id, email: u?.email });
   });
+  // Start a call as the signed-in user: creates the room (the user is host) and returns a join token.
+  me.post("/calls", async (c) => {
+    const body = (await readBody(c)) ?? {};
+    const uid = c.get("uid");
+    const displayName = str(body.displayName, MAX_NAME);
+    if (!displayName) return c.json({ error: "displayName is required" }, 400);
+    const agent = body.agent ?? "on";
+    if (!AGENT_MODES.includes(agent as AgentMode)) {
+      return c.json({ error: "agent must be one of on, off, ask" }, 400);
+    }
+    const agentName =
+      body.agentName === undefined ? defaultAgentName : str(body.agentName, MAX_NAME);
+    if (!agentName) return c.json({ error: "agentName must be a non-empty string" }, 400);
+    const room: Room = {
+      id: `rm_${randomBytes(12).toString("base64url")}`,
+      hostUserId: uid,
+      hostDisplayName: displayName,
+      agent: agent as AgentMode,
+      agentName,
+      sensitive: false,
+      metadata: {},
+      createdAt: now().toISOString(),
+      productKeyId: "standalone",
+    };
+    await storage.createRoom(room);
+    await livekit.createRoom(room.id, roomMetadataJson(room));
+    await storage.saveParticipant({
+      roomId: room.id,
+      userId: uid,
+      displayName,
+      role: "host",
+      joinedAt: room.createdAt,
+    });
+    const token = await livekit.createToken({
+      roomId: room.id,
+      userId: uid,
+      displayName,
+      isHost: true,
+      role: "host",
+      ttlSeconds: ttl,
+    });
+    return c.json(
+      {
+        roomId: room.id,
+        token,
+        expiresIn: ttl,
+        ...(deps.livekitUrl ? { livekitUrl: deps.livekitUrl } : {}),
+      },
+      201,
+    );
+  });
+  me.post("/warmup", async (c) => {
+    const wait = warmupLimit.check(c.get("uid"));
+    if (wait > 0) {
+      c.header("Retry-After", String(Math.ceil(wait / 1000)));
+      return c.json({ error: "too many warm-up calls" }, 429);
+    }
+    const t = (deps.nowMs ?? Date.now)();
+    if (t - lastWake < 10_000) return c.json({ status: "warm" });
+    lastWake = t;
+    const woke = await worker.wake();
+    if (!woke) lastWake = 0;
+    return c.json({ status: woke ? "warming" : "unavailable" });
+  });
   mountKeyRoutes(me as unknown as Hono, (c) =>
     (c as unknown as { get(k: string): string }).get("uid"),
   );

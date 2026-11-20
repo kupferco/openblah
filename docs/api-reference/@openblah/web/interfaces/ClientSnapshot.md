@@ -34,6 +34,14 @@ Write actions waiting for confirmation. Empty unless you own the tool credential
 
 ---
 
+### mode
+
+> **mode**: [`RoomMode`](../type-aliases/RoomMode.md)
+
+The agent's mode (Listening, Facilitating, Direct); `listening` until the agent says otherwise.
+
+---
+
 ### muted
 
 > **muted**: `boolean`

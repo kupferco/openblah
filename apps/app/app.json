@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "OpenBlah",
+    "slug": "openblah",
+    "scheme": "openblah",
+    "version": "0.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "bundleIdentifier": "dev.openblah.app",
+      "supportsTablet": false
+    },
+    "android": {
+      "package": "dev.openblah.app"
+    },
+    "plugins": [
+      [
+        "@openblah/react-native/plugin",
+        { "microphonePermission": "OpenBlah uses the microphone for voice calls." }
+      ]
+    ],
+    "experiments": {
+      "tsconfigPaths": false
+    }
+  }
+}

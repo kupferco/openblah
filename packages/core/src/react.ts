@@ -24,7 +24,7 @@ import type {
   Invite,
   InvitePreview,
 } from "./api.js";
-import type { InviteRequestMessage, Role } from "./protocol.js";
+import type { InviteRequestMessage, Role, RoomMode } from "./protocol.js";
 
 const ClientContext = createContext<OpenBlahClient | null>(null);
 
@@ -115,6 +115,13 @@ export function useAiPause() {
     setPaused: (p: boolean) => client.setAiPaused(p),
     toggle: () => client.setAiPaused(!s.aiPaused),
   };
+}
+
+/** The agent's mode and `set(mode)` to switch it (`listening`, `facilitating` or host-only `direct`). */
+export function useRoomMode() {
+  const client = useClient();
+  const s = useSnapshot(client);
+  return { mode: s.mode, set: (m: RoomMode) => client.setMode(m) };
 }
 
 /**
