@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Opening your OpenBlah invite…</title>
+<!-- Reached only when the app is not installed (or the link was opened in a browser):
+     the invite page lives on the guest page, same token. -->
+<script>
+  var m = location.pathname.match(/^\/j\/([A-Za-z0-9_-]+)/);
+  location.replace(
+    "https://openblah.vercel.app/j/" + (m ? m[1] : "") + location.search + location.hash,
+  );
+</script>
+<noscript
+  ><p>
+    Open your invite on <a href="https://openblah.vercel.app/">openblah.vercel.app</a>.
+  </p></noscript
+>

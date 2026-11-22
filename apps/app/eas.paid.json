@@ -1,0 +1,11 @@
+{
+  "_comment": "Paid Apple account only (docs/release-ios.md, Later). Copy the submit block into eas.json when you enrol.",
+  "submit": {
+    "production": {
+      "ios": {
+        "ascAppId": "APP_STORE_CONNECT_APP_ID",
+        "appleTeamId": "APPLE_TEAM_ID"
+      }
+    }
+  }
+}

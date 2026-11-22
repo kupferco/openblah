@@ -3,6 +3,7 @@ import { Linking } from "react-native";
 import { OpenBlahProvider, type OpenBlahApi, type OpenBlahClient } from "@openblah/react-native";
 import type { AuthService, AuthUser } from "./auth/types.js";
 import { config } from "./config.js";
+import { parseInviteLink, parseSignInRedirect } from "./invite-link.js";
 import { defaultPrefs, type Prefs, type PrefsStore } from "./prefs.js";
 import { CallScreen } from "./screens/Call.js";
 import { ConsentScreen } from "./screens/Consent.js";
@@ -33,13 +34,17 @@ export function AppRoot(props: AppRootProps) {
   const [step, setStep] = useState<Step>("loading");
   const [prefs, setPrefs] = useState<Prefs>(defaultPrefs);
   const [terms, setTerms] = useState<string | null>(null);
+  const [invite, setInvite] = useState<string | null>(null);
 
   useEffect(() => auth.subscribe(setUser), [auth]);
 
-  // Opening the emailed sign-in link brings the app here.
+  // Opening the emailed sign-in link or an invite link (custom scheme, or universal link in a paid build) brings the app here.
   useEffect(() => {
     const finish = (url: string | null | undefined) => {
-      if (url) void auth.completeEmailLink(url).catch(() => undefined);
+      if (!url) return;
+      const token = parseInviteLink(url);
+      if (token) setInvite(token);
+      else void auth.completeEmailLink(parseSignInRedirect(url) ?? url).catch(() => undefined);
     };
     void Linking.getInitialURL().then(finish);
     const sub = Linking.addEventListener("url", (e) => finish(e.url));
@@ -125,6 +130,7 @@ export function AppRoot(props: AppRootProps) {
           <HomeScreen
             name={name}
             agentName={prefs.agentName}
+            invite={invite}
             onStart={goConsent}
             onSettings={() => setStep("settings")}
           />
