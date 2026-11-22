@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 
 /** What the settings tools do. The app implements it with its storage and rules. */
 export interface SettingsToolOps {
@@ -41,12 +41,26 @@ const changeProps = {
     description: "Spoken language: en, pt, or auto to follow what people speak.",
   },
   agentName: { type: "string", description: "The name the agent goes by in this room." },
+  whoPays: {
+    type: "string",
+    enum: ["product", "user_key", "product_trial"],
+    description:
+      "Product owner only: who pays for voice. product = the product's key, user_key = each " +
+      "user's own key, product_trial = the product's key up to a trial allowance.",
+  },
+  userMonthlyMinutes: {
+    type: ["number", "string"],
+    description:
+      "Product owner only: monthly agent minutes per user. 0 turns the cap off; " +
+      "'default' goes back to the default (60 when the product pays).",
+  },
 };
 
 export const SETTINGS_TOOLS = [
   {
     name: "get_settings",
-    description: "Read the room's model, language override and agent name.",
+    description:
+      "Read the room's model, language override and agent name. For the product owner it also returns who pays, the per-user cap and counts (users with their own key, users asked for a key, minutes on the product key).",
     inputSchema: { type: "object", properties: idArgs, required: ["roomId", "actorUserId"] },
     annotations: { readOnlyHint: true },
   },
@@ -109,7 +123,7 @@ async function callTool(ops: SettingsToolOps, name: string, args: Record<string,
  * trusts the caller (the host app's backend or the agent worker) to name the acting user,
  * like the REST host controls do.
  */
-export function settingsMcpApp(ops: SettingsToolOps): Hono {
+export function settingsMcpApp(opsFor: SettingsToolOps | ((c: Context) => SettingsToolOps)): Hono {
   const app = new Hono();
   app.get("/", (c) => c.json({ error: "use POST" }, 405));
   app.post("/", async (c) => {
@@ -122,6 +136,7 @@ export function settingsMcpApp(ops: SettingsToolOps): Hono {
         400,
       );
     }
+    const ops = typeof opsFor === "function" ? opsFor(c) : opsFor;
     const handle = async (m: Rpc) => {
       if (m.id === undefined || m.id === null) return null; // notification
       const reply = (result: unknown) => ({ jsonrpc: "2.0", id: m.id, result });

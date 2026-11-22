@@ -72,10 +72,13 @@ jobs:
           git config user.name  >/dev/null || git config user.name  "OpenPocket"
           git config user.email >/dev/null || git config user.email "openpocket@users.noreply.github.com"
           START="$(git rev-parse HEAD)"
+          MERGED=false
           CONFLICT=false
           if git fetch origin "$BASE" 2>&1; then
             if git merge --no-edit -m "OpenPocket #${{ inputs.task_id }}: merge $BASE into $BRANCH" "origin/$BASE"; then
+              # START is the post-merge point; the branch step's start is the pre-merge head.
               START="$(git rev-parse HEAD)"
+              [ "$START" = "${{ steps.branch.outputs.start }}" ] || MERGED=true
             elif [ -n "$(git diff --name-only --diff-filter=U)" ]; then
               CONFLICT=true
               git diff --name-only --diff-filter=U > "$RUNNER_TEMP/openpocket-conflicts.txt"
@@ -85,6 +88,7 @@ jobs:
           fi
           echo "start=$START" >> "$GITHUB_OUTPUT"
           echo "conflict=$CONFLICT" >> "$GITHUB_OUTPUT"
+          echo "merged=$MERGED" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@v4
         with:
@@ -192,7 +196,8 @@ jobs:
             Take them from your work and the README. Also add one line
             If the task can't work until the owner does something by hand (add a repo secret, run a
             one-time script), also add "OpenPocket-Manual: <one step>" lines, and "OpenPocket-Secret: <NAME>"
-            for each missing secret: the task then shows under "Do on the computer" until they tap Done.
+            for each missing secret: the task then shows under "Do it" until they tap Done.
+            Do not list a step the merge and deploy do not need; put it in the pull request description.
             "OpenPocket-Safe: <plain sentence>" saying whether merging is safe (for example "Spike only,
             doesn't touch the app, safe to merge.").
           claude_args: >-
@@ -235,7 +240,7 @@ jobs:
             git add -A
             git commit -m "OpenPocket #${{ inputs.task_id }}: uncommitted work"
           fi
-          # Nothing to offer when the session changed nothing.
+          # Nothing to offer when the session changed nothing since the merge of main (post-merge mark; a merge-only run is already current).
           [ "$(git rev-parse HEAD)" != "${{ steps.merge.outputs.start }}" ] || exit 0
           git fetch origin "$BASE" || exit 0
           if git merge-base --is-ancestor "origin/$BASE" HEAD; then out current "Up to date with $BASE"; exit 0; fi
@@ -252,12 +257,7 @@ jobs:
           
           const git = (...a) => execFileSync('git', a, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
           
-          const NEVER = [
-            [/(^|\/)(schema\.sql|schema\.hcl|atlas\.hcl|atlas\.sum)$|(^|\/)migrations?\/|(^|\/)(prisma|drizzle)\/|\.sql$/i, 'database schema'],
-            [/(^|\/)(auth|oauth|session|login|passport|jwt)[^/]*\.(ts|tsx|js|jsx|mjs|py|go|rb)$|(^|\/)(auth|oauth)\//i, 'auth code'],
-            [/(^|\/)(\.env[^/]*|[^/]*secrets?[^/]*|[^/]*credentials?[^/]*|[^/]*\.(pem|key|p12))$/i, 'secrets'],
-            [/^\.github\/workflows\/(?!openpocket\.ya?ml$)|(^|\/)(Dockerfile[^/]*|cloudbuild[^/]*|app\.yaml|firebase\.json|fly\.toml|render\.yaml|vercel\.json|netlify\.toml|deploy[^/]*\.(sh|yml|yaml))$|^scripts\/deploy/i, 'deploy config'],
-          ];
+          const NEVER = [["(^|\\/)(schema\\.sql|schema\\.hcl|atlas\\.hcl|atlas\\.sum)$|(^|\\/)migrations?\\/|(^|\\/)(prisma|drizzle)\\/|\\.sql$","i","database schema"],["(^|\\/)(auth|oauth|session|login|passport|jwt)[^/]*\\.(ts|tsx|js|jsx|mjs|py|go|rb)$|(^|\\/)(auth|oauth)\\/","i","auth code"],["(^|\\/)(\\.env[^/]*|[^/]*secrets?[^/]*|[^/]*credentials?[^/]*|[^/]*\\.(pem|key|p12))$","i","secrets"],["^\\.github\\/workflows\\/(?!openpocket\\.ya?ml$)|(^|\\/)(Dockerfile[^/]*|cloudbuild[^/]*|app\\.yaml|firebase\\.json|fly\\.toml|render\\.yaml|vercel\\.json|netlify\\.toml|deploy[^/]*\\.(sh|yml|yaml))$|^scripts\\/deploy","i","deploy config"]].map(([s, f, why]) => [new RegExp(s, f), why]);
           function neverReason(file) {
             for (const [re, why] of NEVER) if (re.test(file)) return why;
             return null;
@@ -465,10 +465,12 @@ jobs:
             git add -A
             git commit -m "OpenPocket #${{ inputs.task_id }}: uncommitted work"
           fi
-          if [ "$(git rev-parse HEAD)" = "${{ steps.merge.outputs.start }}" ]; then
+          # Compare with the head before the merge, so a run whose only change is the merge of main is pushed.
+          if [ "$(git rev-parse HEAD)" = "${{ steps.branch.outputs.start }}" ]; then
             echo "pushed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          [ "$(git rev-parse HEAD)" != "${{ steps.merge.outputs.start }}" ] || echo "merge_only=true" >> "$GITHUB_OUTPUT"
           # The Claude step may have swapped the credentials checkout saved,
           # so push with the push token explicitly.
           AUTH="$(printf 'x-access-token:%s' "$PUSH_TOKEN" | base64 | tr -d '\n')"
@@ -494,6 +496,7 @@ jobs:
           OPENPOCKET_HOOK_SECRET: ${{ secrets.OPENPOCKET_HOOK_SECRET || secrets.VIBER_HOOK_SECRET }}
           OUTCOME: ${{ steps.claude.outcome }}
           PUSHED: ${{ steps.push.outputs.pushed }}
+          MERGE_ONLY: ${{ steps.push.outputs.merge_only }}
           PUSH_ERROR: ${{ steps.push.outputs.error }}
           PUSH_OUTCOME: ${{ steps.push.outcome }}
           SYNC_STATUS: ${{ steps.sync.outputs.status }}
@@ -511,6 +514,11 @@ jobs:
         run: |
           if [ "$PUSH_OUTCOME" = failure ] && [ -z "$PUSH_ERROR" ]; then
             PUSH_ERROR="The push step failed before it could push. See the run log."
+          fi
+          # A run whose only change is the merge of the default branch is "updated from main".
+          if [ "$MERGE_ONLY" = true ] && [ -z "$SYNC_STATUS$AI_STATUS" ]; then
+            SYNC_STATUS=updated
+            SYNC_NOTE="Updated from $BASE"
           fi
           SUMMARY=""
           [ -f "$RUNNER_TEMP/openpocket-pr.md" ] && SUMMARY="$(cat "$RUNNER_TEMP/openpocket-pr.md")"

@@ -1,3 +1,4 @@
+import { createServer } from "node:http";
 import {
   cli,
   defineAgent,
@@ -240,14 +241,24 @@ export default defineAgent({
 });
 
 if (process.argv[1] === import.meta.filename) {
+  // Cloud Run requires something to listen on $PORT within seconds of start. LiveKit's own
+  // HTTP server only opens after the models and the LiveKit connection are up, which can
+  // take longer (or never happen if LiveKit is unreachable), so the revision would be
+  // marked failed. Listen right away; a request here also wakes the instance (warm-up).
+  // LiveKit's built-in server moves to an internal port.
+  const port = Number(process.env.PORT ?? 8081);
+  if (process.env.PORT && process.argv.includes("start")) {
+    createServer((_req, res) => {
+      res.writeHead(200, { "content-type": "text/plain" });
+      res.end("ok");
+    }).listen(port, "0.0.0.0");
+  }
   cli.runApp(
     new ServerOptions({
       agent: import.meta.filename,
       agentName: configFromEnv().dispatchName,
-      // Cloud Run sends requests (the server's warm-up) to $PORT; the worker's
-      // built-in HTTP server answers them and the request wakes the instance.
-      host: "0.0.0.0",
-      port: Number(process.env.PORT ?? 8081),
+      host: "127.0.0.1",
+      port: process.env.PORT && process.argv.includes("start") ? 8081 : port,
     }),
   );
 }

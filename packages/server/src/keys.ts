@@ -1,6 +1,7 @@
 import { KeyCipher, type Sealed } from "./crypto.js";
 import { createHash } from "node:crypto";
 import type { Room, Storage } from "./types.js";
+import type { WhoPays } from "./settings.js";
 
 export const PROVIDERS = ["gemini", "deepgram", "cartesia"] as const;
 export type Provider = (typeof PROVIDERS)[number];
@@ -38,6 +39,13 @@ export type Resolution =
   | {
       ok: false;
       code: "sensitive_free_tier" | "no_key" | "trial_exhausted" | "sign_in_required";
+      message: string;
+    }
+  | {
+      /** The product does not pay (any more) and the user has no key of their own. */
+      ok: false;
+      code: "key_required";
+      reason: "product_not_paying" | "trial_used";
       message: string;
     };
 
@@ -148,16 +156,31 @@ export interface KeyResolverDeps {
     keys: ProviderKeys | null;
     canStart(room: Room): Promise<"ok" | "sign_in_required" | "exhausted">;
   };
+  /**
+   * `product_trial` allowance check for this room's host and product. The per-product counter
+   * arrives in a later part of plan 370; without it the allowance counts as used.
+   */
+  productTrial?: { hasAllowance(room: Room, productKeyId: string): Promise<boolean> };
 }
 
 /**
  * Choose whose keys pay for a room. In a group room the host's key pays.
- * Order: host BYOK, the product's key for the API key that made the room, trial.
+ *
+ * A room made by a product (`productKeyId`) follows that product's `whoPays`:
+ * - `product`: the product's key pays; the user's key is not used.
+ * - `user_key`: only the host's own key; the product's key is never used.
+ * - `product_trial`: the host's own key if saved, else the product's key while the allowance
+ *   lasts.
+ * A refusal is `key_required`. Without a setting (the caller passes the server's
+ * `defaultWhoPays`, `user_key` for new products), the older order stays: host BYOK, product
+ * key, hosted trial. Self-hosted servers set `product`. Changing the setting applies to the next resolution, so a running call is
+ * not cut (Q4).
  */
 export async function resolveRoomKeys(
   deps: KeyResolverDeps,
   room: Room,
   productKeyId: string | undefined,
+  whoPays: WhoPays | null = null,
 ): Promise<Resolution> {
   const refuse = (): Resolution => ({
     ok: false,
@@ -165,23 +188,51 @@ export async function resolveRoomKeys(
     message: `This room is sensitive and cannot use a free-tier key. ${DATA_TERMS}`,
   });
 
-  const byok = deps.keyStore ? await deps.keyStore.openAll(room.hostUserId) : null;
-  if (byok) {
+  const byokResult = async (): Promise<Resolution | null> => {
+    const byok = deps.keyStore ? await deps.keyStore.openAll(room.hostUserId) : null;
+    if (!byok) return null;
     const free = byok.stored.some((k) => k.tier === "free");
     const unconfirmed = byok.stored.some((k) => !k.noTrainingConfirmed);
     if (room.sensitive && (free || unconfirmed)) return refuse();
     return { ok: true, mode: "byok", tier: free ? "free" : "paid", keys: byok.keys };
-  }
-
-  const product = (productKeyId && deps.productKeys[productKeyId]) || deps.productKeys["*"];
-  if (product) {
+  };
+  const productResult = (): Resolution | null => {
+    const product = (productKeyId && deps.productKeys[productKeyId]) || deps.productKeys["*"];
+    if (!product) return null;
     if (room.sensitive && product.tier === "free") return refuse();
     return { ok: true, mode: "product", tier: product.tier, keys: product.keys };
+  };
+
+  // No setting on the product and no server default: the older order below still applies.
+  const mode: WhoPays | null = productKeyId ? whoPays : null;
+
+  if (mode) {
+    const keyRequired = (reason: "product_not_paying" | "trial_used"): Resolution => ({
+      ok: false,
+      code: "key_required",
+      reason,
+      message:
+        reason === "trial_used"
+          ? "The free allowance is used up. Add your own key to keep using voice."
+          : "Add your own key to keep using voice.",
+    });
+    if (mode === "product") return productResult() ?? noKey();
+    const own = await byokResult();
+    if (own) return own;
+    if (mode === "user_key") return keyRequired("product_not_paying");
+    // product_trial
+    const allowed =
+      !!productKeyId && (await deps.productTrial?.hasAllowance(room, productKeyId)) === true;
+    if (!allowed) return keyRequired("trial_used");
+    return productResult() ?? noKey();
   }
 
-  if (!deps.trial.keys) {
-    return { ok: false, code: "no_key", message: "No provider keys are configured for this room." };
-  }
+  const own = await byokResult();
+  if (own) return own;
+  const prod = productResult();
+  if (prod) return prod;
+
+  if (!deps.trial.keys) return noKey();
   if (room.sensitive) return refuse();
   const trial = await deps.trial.canStart(room);
   if (trial === "sign_in_required") {
@@ -199,4 +250,8 @@ export async function resolveRoomKeys(
     };
   }
   return { ok: true, mode: "trial", tier: "free", keys: deps.trial.keys };
+}
+
+function noKey(): Resolution {
+  return { ok: false, code: "no_key", message: "No provider keys are configured for this room." };
 }
