@@ -257,12 +257,7 @@ jobs:
           
           const git = (...a) => execFileSync('git', a, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
           
-          const NEVER = [
-            [/(^|\/)(schema\.sql|schema\.hcl|atlas\.hcl|atlas\.sum)$|(^|\/)migrations?\/|(^|\/)(prisma|drizzle)\/|\.sql$/i, 'database schema'],
-            [/(^|\/)(auth|oauth|session|login|passport|jwt)[^/]*\.(ts|tsx|js|jsx|mjs|py|go|rb)$|(^|\/)(auth|oauth)\//i, 'auth code'],
-            [/(^|\/)(\.env[^/]*|[^/]*secrets?[^/]*|[^/]*credentials?[^/]*|[^/]*\.(pem|key|p12))$/i, 'secrets'],
-            [/^\.github\/workflows\/(?!openpocket\.ya?ml$)|(^|\/)(Dockerfile[^/]*|cloudbuild[^/]*|app\.yaml|firebase\.json|fly\.toml|render\.yaml|vercel\.json|netlify\.toml|deploy[^/]*\.(sh|yml|yaml))$|^scripts\/deploy/i, 'deploy config'],
-          ];
+          const NEVER = [["(^|\\/)(schema\\.sql|schema\\.hcl|atlas\\.hcl|atlas\\.sum)$|(^|\\/)migrations?\\/|(^|\\/)(prisma|drizzle)\\/|\\.sql$","i","database schema"],["(^|\\/)(auth|oauth|session|login|passport|jwt)[^/]*\\.(ts|tsx|js|jsx|mjs|py|go|rb)$|(^|\\/)(auth|oauth)\\/","i","auth code"],["(^|\\/)(\\.env[^/]*|[^/]*secrets?[^/]*|[^/]*credentials?[^/]*|[^/]*\\.(pem|key|p12))$","i","secrets"],["^\\.github\\/workflows\\/(?!openpocket\\.ya?ml$)|(^|\\/)(Dockerfile[^/]*|cloudbuild[^/]*|app\\.yaml|firebase\\.json|fly\\.toml|render\\.yaml|vercel\\.json|netlify\\.toml|deploy[^/]*\\.(sh|yml|yaml))$|^scripts\\/deploy","i","deploy config"]].map(([s, f, why]) => [new RegExp(s, f), why]);
           function neverReason(file) {
             for (const [re, why] of NEVER) if (re.test(file)) return why;
             return null;
