@@ -1,3 +1,4 @@
+import * as WebBrowser from "expo-web-browser";
 import { useMemo } from "react";
 import { createOpenBlahClient } from "@openblah/react-native";
 import { AppRoot } from "./AppRoot.js";
@@ -19,5 +20,14 @@ export default function App() {
     });
     return { auth, api, client };
   }, []);
-  return <AppRoot {...deps} prefs={asyncStoragePrefs} />;
+  return (
+    <AppRoot
+      {...deps}
+      prefs={asyncStoragePrefs}
+      openAuthSession={(url) =>
+        WebBrowser.openAuthSessionAsync(url, config.mcpReturnUrl || undefined)
+      }
+      {...(config.mcpReturnUrl ? { mcpReturnUrl: config.mcpReturnUrl } : {})}
+    />
+  );
 }

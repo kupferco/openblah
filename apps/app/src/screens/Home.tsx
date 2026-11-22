@@ -8,6 +8,8 @@ export function HomeScreen(props: {
   invite?: string | null;
   onStart: () => void;
   onSettings: () => void;
+  onHistory: () => void;
+  onTools: () => void;
 }) {
   return (
     <Screen title={`Hi ${props.name}`}>
@@ -19,6 +21,8 @@ export function HomeScreen(props: {
         </Body>
       )}
       <Button primary label="Start talking" onPress={props.onStart} />
+      <Button label="Call history" onPress={props.onHistory} />
+      <Button label="Tools" onPress={props.onTools} />
       <Button label="Settings" onPress={props.onSettings} />
     </Screen>
   );

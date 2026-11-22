@@ -7,14 +7,17 @@ import { parseInviteLink, parseSignInRedirect } from "./invite-link.js";
 import { defaultPrefs, type Prefs, type PrefsStore } from "./prefs.js";
 import { CallScreen } from "./screens/Call.js";
 import { ConsentScreen } from "./screens/Consent.js";
+import { HistoryScreen } from "./screens/History.js";
 import { HomeScreen } from "./screens/Home.js";
 import { OnboardingScreen } from "./screens/Onboarding.js";
+import { ServersScreen } from "./screens/Servers.js";
 import { SettingsScreen } from "./screens/Settings.js";
 import { SignInScreen } from "./screens/SignIn.js";
 import { Body, Screen } from "./ui.js";
 import { useWarmup } from "./warmup.js";
 
-type Step = "loading" | "onboarding" | "home" | "settings" | "consent" | "call";
+type Step =
+  "loading" | "onboarding" | "home" | "settings" | "history" | "tools" | "consent" | "call";
 
 export interface AppRootProps {
   auth: AuthService;
@@ -22,6 +25,10 @@ export interface AppRootProps {
   client: OpenBlahClient;
   prefs: PrefsStore;
   livekitUrl?: string;
+  /** Show an MCP server's sign-in page (`WebBrowser.openAuthSessionAsync` on the device). */
+  openAuthSession?: (url: string) => Promise<unknown>;
+  /** Where the browser goes after an MCP sign-in, if the server needs one. */
+  mcpReturnUrl?: string;
 }
 
 /**
@@ -106,6 +113,17 @@ export function AppRoot(props: AppRootProps) {
             onSignOut={() => void auth.signOut()}
           />
         );
+      case "history":
+        return <HistoryScreen api={api} userId={user.uid} onBack={() => setStep("home")} />;
+      case "tools":
+        return (
+          <ServersScreen
+            client={props.client}
+            {...(props.openAuthSession ? { openAuthSession: props.openAuthSession } : {})}
+            {...(props.mcpReturnUrl ? { returnUrl: props.mcpReturnUrl } : {})}
+            onBack={() => setStep("home")}
+          />
+        );
       case "consent":
         return (
           <ConsentScreen
@@ -119,7 +137,9 @@ export function AppRoot(props: AppRootProps) {
         return (
           <CallScreen
             api={api}
+            client={props.client}
             displayName={name}
+            userId={user.uid}
             agentName={prefs.agentName}
             livekitUrl={props.livekitUrl ?? config.livekitUrl}
             onLeave={() => setStep("home")}
@@ -133,10 +153,12 @@ export function AppRoot(props: AppRootProps) {
             invite={invite}
             onStart={goConsent}
             onSettings={() => setStep("settings")}
+            onHistory={() => setStep("history")}
+            onTools={() => setStep("tools")}
           />
         );
     }
-  }, [user, step, auth, api, prefs, terms, goConsent, props.prefs, props.livekitUrl]);
+  }, [user, step, auth, api, prefs, terms, goConsent, props]);
 
   return <OpenBlahProvider client={props.client}>{content}</OpenBlahProvider>;
 }

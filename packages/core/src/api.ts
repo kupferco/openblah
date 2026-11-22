@@ -273,7 +273,13 @@ export class OpenBlahApi {
   // ---- Standalone app: calls and warm-up (the `/me` endpoints, Firebase ID token in `headers`) ----
 
   /** Start a call as the signed-in user (you are the host). Returns the room and a join token. */
-  startCall(opts: { displayName: string; agent?: "on" | "off" | "ask"; agentName?: string }) {
+  startCall(opts: {
+    displayName: string;
+    agent?: "on" | "off" | "ask";
+    agentName?: string;
+    /** Which of the person's saved MCP servers are on in this room. Leave out for all. */
+    mcpConnectionIds?: string[];
+  }) {
     return this.call<StartedCall>("POST", "/me/calls", { body: opts, auth: true });
   }
 
@@ -532,6 +538,26 @@ export class OpenBlahApi {
     return this.call<GuestJoin>("POST", `/invites/${enc(token)}/join`, {
       body: consent ? { displayName, consent } : { displayName },
     });
+  }
+
+  // ---- Per-room MCP servers ----
+
+  /** The saved servers switched on for this room; `null` means all of the host's servers. */
+  getRoomMcpServers(roomId: string, actorUserId: string) {
+    return this.call<{ enabledConnectionIds: string[] | null }>(
+      "GET",
+      `/rooms/${enc(roomId)}/mcp-servers`,
+      { query: { actorUserId }, auth: true },
+    ).then((r) => r.enabledConnectionIds);
+  }
+
+  /** Host: choose which saved servers are on in this room (`null` = all). Next agent join. */
+  setRoomMcpServers(roomId: string, actorUserId: string, enabledConnectionIds: string[] | null) {
+    return this.call<{ enabledConnectionIds: string[] | null }>(
+      "PUT",
+      `/rooms/${enc(roomId)}/mcp-servers`,
+      { body: { actorUserId, enabledConnectionIds }, auth: true },
+    ).then((r) => r.enabledConnectionIds);
   }
 
   // ---- MCP connections (OAuth) ----
