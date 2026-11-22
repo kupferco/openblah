@@ -83,14 +83,54 @@ We rejected a pure "explicit dispatch API starts a Cloud Run job per call" desig
 
 - `--no-cpu-throttling` (CPU always allocated): the worker's LiveKit WebSocket and audio processing are not tied to an HTTP request, and throttled CPU between requests would stall them.
 - `--timeout 3600`: the maximum request timeout (60 min). Our health request is short, but the instance stays up while calls run because LiveKit keeps the worker busy; it is kept alive by that load plus Cloud Run's idle period (up to about 15 min after the last request). Calls longer than an hour are fine, since the job is not a request. If you see instances stopped mid-call, set `--min-instances 1` during the call window or raise the idle keep-alive by warming up more often.
-- `--max-instances 5`, `--cpu 2 --memory 2Gi`: caps spend and fits the VAD and turn-detector models.
+- `--max-instances 1` (`MAX_INSTANCES`), `--cpu 2 --memory 2Gi`: caps spend and fits the VAD and turn-detector models.
 - Cost: CPU-always-allocated bills for the whole instance lifetime, not per request. At min 0 the instance is idle-billed only for about 15 min after the last warm-up. Verify against the Cloud Run free tier in your project.
 
 **Open point to verify in staging:** whether a dispatch created while no worker is registered is picked up once a worker registers (LiveKit retries pending dispatches for a short time). The server wakes the worker before dispatching to make this rare; if it fails in practice, the client should re-call `POST /v1/rooms/:id/agent` after a few seconds (it is idempotent).
 
+## Owner checklist (first release and deploy)
+
+Each part is separate. Do 1 for the npm packages, 2 for the servers, 3 to add a host app.
+
+### 1. npm release (once)
+
+1. On npmjs.com create the `openblah` organisation, so the `@openblah` scope is yours (free for public packages). If the name is taken, see the fallback below.
+2. Create a granular access token (or an automation token) with read and write on the `@openblah` packages. Under Settings > Tokens.
+3. In GitHub: Settings > Secrets and variables > Actions > New repository secret `NPM_TOKEN` = the token.
+4. Actions > Release > Run workflow, tick **Dry run** first (it also runs in CI on every PR), then run it again without the tick. Or push a tag `v0.1.0`.
+5. Check: `npm view @openblah/web version` prints `0.1.0` (same for `core`, `react-native`, `server`). The package page shows the provenance badge.
+
+The first publish of a scoped package needs `--access public`; the workflow and each `publishConfig` already set it. Provenance needs the workflow's `id-token: write` (set) and a public repo.
+
+**Fallback if the scope is blocked: GitHub Packages.** Change the package names to `@kupferco/...`, set `registry-url: https://npm.pkg.github.com` in `release.yml`, give the job `packages: write` and use `secrets.GITHUB_TOKEN` instead of `NPM_TOKEN`. Host apps then need an `.npmrc` with `@kupferco:registry=https://npm.pkg.github.com` and a token to install. Prefer npm; it needs no token to install.
+
+### 2. Deploy server and agent (once)
+
+1. Create (or pick) a GCP project with billing, then run the "One-time GCP setup" commands above (APIs, Firestore, Artifact Registry repo `openblah`, secrets).
+2. Secrets in Secret Manager: `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `OPENBLAH_API_KEYS`, `DEEPGRAM_API_KEY`, `CARTESIA_API_KEY`, `GEMINI_API_KEY`. Optional, used if present: `OPENBLAH_PRODUCT_KEYS`, `OPENBLAH_AGENT_SECRET` (any long random string), `KEY_ENCRYPTION_SECRET`.
+3. Create a deploy service account and give it `roles/run.admin`, `roles/artifactregistry.writer`, `roles/secretmanager.viewer` (so the workflow can see which optional secrets exist) and `roles/iam.serviceAccountUser`. The runtime account (the Compute default, unless you set another) needs `roles/datastore.user` and `roles/secretmanager.secretAccessor`.
+4. Set up Workload Identity Federation for the GitHub repo `kupferco/openblah` ([guide](https://github.com/google-github-actions/auth#workload-identity-federation)), and allow it to impersonate the deploy account.
+5. GitHub repo secrets: `GCP_PROJECT_ID`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_SERVICE_ACCOUNT`, `OPENBLAH_SMOKE_API_KEY` (one of the keys in `OPENBLAH_API_KEYS`), `VIBER_URL`, `VIBER_HOOK_SECRET`. Optional repo variables: `GCP_REGION`, `MAX_INSTANCES` (default 1), `OPENBLAH_USER_MONTHLY_MINUTES`, `OPENBLAH_DEFAULT_WHO_PAYS`.
+6. Push to `main` (or Actions > Deploy > Run workflow). Without GitHub Actions: `scripts/deploy.sh <project-id> prod`.
+7. Check: `curl https://<server-url>/health` answers 200 (the URL is in the workflow log, or `gcloud run services describe openblah-server-prod --region europe-west1 --format='value(status.url)'`). The smoke test in the workflow also calls `/v1/warmup`.
+
+LiveKit is self-hosted: follow [docs/self-host-livekit.md](self-host-livekit.md) first, and put its URL and key in the three `LIVEKIT_*` secrets.
+
+Cost: both services scale to zero and are capped at 1 instance (`MAX_INSTANCES`), so at most one server and one agent run at a time. Raise the cap when one worker is not enough for your concurrent calls.
+
+### 3. Register a host app (Housekeeper)
+
+1. Make an API key for the app, for example `openssl rand -hex 24`, and add it to the comma-separated secret `OPENBLAH_API_KEYS` (new secret version). Housekeeper's backend keeps this key and calls `/v1/tokens` with it; it must never reach the browser.
+2. Add its provider keys to the secret `OPENBLAH_PRODUCT_KEYS` (JSON, keyed by that API key):
+   `{"<housekeeper api key>":{"gemini":"...","deepgram":"...","cartesia":"...","tier":"paid"}}`
+3. Optional monthly cap per user: repo variable `OPENBLAH_USER_MONTHLY_MINUTES` (for example `120`; empty = off). The product can also set `userMonthlyMinutes` itself.
+4. Choose who pays: for Housekeeper paying, call `PUT /v1/product/settings` with its API key and `{"settings":{"whoPays":"product"}}` (other values: `user_key`, `product_trial`). Or set the repo variable `OPENBLAH_DEFAULT_WHO_PAYS=product` for products that have not chosen. See [keys-and-trial.md](keys-and-trial.md).
+5. Re-run the Deploy workflow so the new secret versions and variables are picked up (secrets are pinned at `latest` per revision).
+6. Check: `curl -X POST https://<server-url>/v1/tokens -H "Authorization: Bearer <key>"` with a body answers 4xx about the body, not 401.
+
 ## Automated deploys
 
-`.github/workflows/deploy.yml` builds both images, pushes them to Artifact Registry, deploys the worker then the server, smoke-tests `/health` and `/v1/warmup`, and sends the Viber deploy report (always). Staging deploys on every push to the `staging` branch; production only by hand (Run workflow, env `prod`) and only from `main`.
+`.github/workflows/deploy.yml` builds both images, pushes them to Artifact Registry, deploys the worker then the server, smoke-tests `/health` and `/v1/warmup`, and sends the Viber deploy report (always). Every push to `main` deploys `prod`; by hand (Run workflow) you can choose `staging` or `prod`, and `prod` only from `main`. Both services use max instances 1 unless the repo variable `MAX_INSTANCES` says otherwise. `scripts/deploy.sh` does the same from your machine.
 
 Repo secrets needed:
 
