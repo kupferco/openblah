@@ -235,6 +235,31 @@ export class OpenBlahApiError extends Error {
   }
 }
 
+/** Why a product asks the user for their own key. */
+export type KeyRequiredReason = "product_not_paying" | "trial_used";
+
+/**
+ * The server answered `402 key_required`: the product does not pay for this user's voice (any
+ * more). Show "Add your own key to keep using voice" and the add-key sheet; never a generic error.
+ */
+export class KeyRequiredError extends OpenBlahApiError {
+  constructor(
+    message: string,
+    readonly reason: KeyRequiredReason,
+    body: unknown,
+  ) {
+    super(402, message, body);
+    this.name = "KeyRequiredError";
+  }
+}
+
+/** Result of {@link OpenBlahApi.getKeyStatus}. */
+export interface KeyStatus {
+  /** `needs_key`: this user's next voice start will ask for their own key. */
+  status: "ok" | "needs_key";
+  reason?: KeyRequiredReason;
+}
+
 /** Typed calls to the OpenBlah server's invite, consent and host-control endpoints. */
 export class OpenBlahApi {
   private readonly base: string;
@@ -401,6 +426,14 @@ export class OpenBlahApi {
       `${userPath(userId)}/keys/${enc(provider)}`,
       { body: { key, ...opts }, auth: true },
     );
+  }
+
+  /**
+   * A product's pre-check: would this user's next voice start need their own key? Call it from
+   * your backend proxy or UI to show the banner before they tap. Product users only.
+   */
+  getKeyStatus(userId: string) {
+    return this.call<KeyStatus>("GET", `${userPath(userId)}/key-status`, { auth: true });
   }
 
   startTrial(userId?: string) {
@@ -585,6 +618,14 @@ export class OpenBlahApi {
         typeof data === "object" && data && "error" in data && typeof data.error === "string"
           ? data.error
           : `request failed (${res.status})`;
+      if (res.status === 402 && (data as { code?: unknown } | null)?.code === "key_required") {
+        const reason = (data as { reason?: unknown }).reason;
+        throw new KeyRequiredError(
+          msg,
+          reason === "trial_used" ? "trial_used" : "product_not_paying",
+          data,
+        );
+      }
       throw new OpenBlahApiError(res.status, msg, data);
     }
     return data as T;

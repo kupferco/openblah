@@ -1,8 +1,10 @@
+import * as Crypto from "expo-crypto";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as WebBrowser from "expo-web-browser";
 import { initializeApp } from "firebase/app";
 import {
   GoogleAuthProvider,
+  OAuthProvider,
   getAuth,
   isSignInWithEmailLink,
   onAuthStateChanged,
@@ -50,6 +52,38 @@ export function createFirebaseAuth(): AuthService {
     async signInWithGoogle() {
       const result = await googlePrompt();
       await signInWithCredential(auth, GoogleAuthProvider.credential(result));
+    },
+    async appleAvailable() {
+      if (!config.paidApple) return false;
+      return (await import("expo-apple-authentication")).isAvailableAsync();
+    },
+    async signInWithApple() {
+      if (!config.paidApple) throw new Error("Sign in with Apple needs the paid Apple account");
+      const AppleAuthentication = await import("expo-apple-authentication");
+      // Firebase wants the raw nonce; Apple gets its SHA-256 hash.
+      const nonce = Crypto.randomUUID();
+      const hashed = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, nonce);
+      let apple;
+      try {
+        apple = await AppleAuthentication.signInAsync({
+          requestedScopes: [
+            AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+            AppleAuthentication.AppleAuthenticationScope.EMAIL,
+          ],
+          nonce: hashed,
+        });
+      } catch (e) {
+        if ((e as { code?: string }).code === "ERR_REQUEST_CANCELED") {
+          throw new Error("Apple sign-in was cancelled");
+        }
+        throw e;
+      }
+      if (!apple.identityToken) throw new Error("Apple did not return an identity token");
+      const credential = new OAuthProvider("apple.com").credential({
+        idToken: apple.identityToken,
+        rawNonce: nonce,
+      });
+      await signInWithCredential(auth, credential);
     },
     signOut: () => signOut(auth),
     async getIdToken() {

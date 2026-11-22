@@ -1,26 +1,28 @@
-# Deploys the server and the agent worker to Cloud Run (min instances 0).
-# staging: every push to the staging branch (or run by hand). prod: run by hand on main only.
+# Deploys the server and the agent worker to Cloud Run (min instances 0, max instances 1 by default).
+# Every push to main deploys prod. By hand (Run workflow) you can pick staging or prod;
+# prod only from main. Raise the cap with the repo variable MAX_INSTANCES.
 name: Deploy
 on:
   push:
-    branches: [staging]
+    branches: [main]
   workflow_dispatch:
     inputs:
       env:
         description: Target environment
         type: choice
         options: [staging, prod]
-        default: staging
+        default: prod
 
 permissions:
   contents: read
   id-token: write
 
 concurrency:
-  group: deploy-${{ github.event.inputs.env || 'staging' }}
+  group: deploy-${{ github.event.inputs.env || 'prod' }}
 
 env:
-  TARGET: ${{ github.event.inputs.env || 'staging' }}
+  TARGET: ${{ github.event.inputs.env || 'prod' }}
+  MAX_INSTANCES: ${{ vars.MAX_INSTANCES || '1' }}
   REGION: ${{ vars.GCP_REGION || 'europe-west1' }}
 
 jobs:
@@ -69,6 +71,18 @@ jobs:
           done
           echo "repo=$REPO" >> "$GITHUB_OUTPUT"
 
+      # Optional runtime secrets: used only if they exist in Secret Manager.
+      - name: Find optional secrets
+        id: opt
+        run: |
+          extra=""
+          for v in OPENBLAH_PRODUCT_KEYS OPENBLAH_AGENT_SECRET KEY_ENCRYPTION_SECRET; do
+            if gcloud secrets describe "$v" --project "${{ secrets.GCP_PROJECT_ID }}" >/dev/null 2>&1; then
+              extra="$extra,$v=$v:latest"
+            fi
+          done
+          echo "extra=$extra" >> "$GITHUB_OUTPUT"
+
       # Worker first, so the server can be pointed at its URL.
       # CPU always allocated and a 60 min timeout: the worker holds a WebSocket to LiveKit
       # for the whole call; with throttled CPU between requests it would stall.
@@ -78,10 +92,10 @@ jobs:
         run: |
           gcloud run deploy "openblah-agent-$TARGET" \
             --image "${{ steps.build.outputs.repo }}/agent:$GITHUB_SHA" --region "$REGION" \
-            --min-instances 0 --max-instances 5 --no-cpu-throttling --cpu 2 --memory 2Gi \
+            --min-instances 0 --max-instances "$MAX_INSTANCES" --no-cpu-throttling --cpu 2 --memory 2Gi \
             --timeout 3600 --no-allow-unauthenticated \
             --set-env-vars "OPENBLAH_ENV=$TARGET" \
-            --set-secrets "LIVEKIT_URL=LIVEKIT_URL:latest,LIVEKIT_API_KEY=LIVEKIT_API_KEY:latest,LIVEKIT_API_SECRET=LIVEKIT_API_SECRET:latest,DEEPGRAM_API_KEY=DEEPGRAM_API_KEY:latest,CARTESIA_API_KEY=CARTESIA_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest"
+            --set-secrets "LIVEKIT_URL=LIVEKIT_URL:latest,LIVEKIT_API_KEY=LIVEKIT_API_KEY:latest,LIVEKIT_API_SECRET=LIVEKIT_API_SECRET:latest,DEEPGRAM_API_KEY=DEEPGRAM_API_KEY:latest,CARTESIA_API_KEY=CARTESIA_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest${{ steps.opt.outputs.extra }}"
           echo "url=$(gcloud run services describe "openblah-agent-$TARGET" --region "$REGION" --format='value(status.url)')" >> "$GITHUB_OUTPUT"
 
       - name: Deploy server
@@ -89,14 +103,20 @@ jobs:
         run: |
           gcloud run deploy "openblah-server-$TARGET" \
             --image "${{ steps.build.outputs.repo }}/server:$GITHUB_SHA" --region "$REGION" \
-            --min-instances 0 --max-instances 10 --allow-unauthenticated \
-            --set-env-vars "OPENBLAH_STORAGE=firestore,AGENT_WORKER_URL=${{ steps.worker.outputs.url }},AGENT_WORKER_AUTH=iam" \
-            --set-secrets "LIVEKIT_URL=LIVEKIT_URL:latest,LIVEKIT_API_KEY=LIVEKIT_API_KEY:latest,LIVEKIT_API_SECRET=LIVEKIT_API_SECRET:latest,OPENBLAH_API_KEYS=OPENBLAH_API_KEYS:latest"
+            --min-instances 0 --max-instances "$MAX_INSTANCES" --allow-unauthenticated \
+            --set-env-vars "OPENBLAH_STORAGE=firestore,AGENT_WORKER_URL=${{ steps.worker.outputs.url }},AGENT_WORKER_AUTH=iam${{ vars.OPENBLAH_USER_MONTHLY_MINUTES && format(',OPENBLAH_USER_MONTHLY_MINUTES={0}', vars.OPENBLAH_USER_MONTHLY_MINUTES) || '' }}${{ vars.OPENBLAH_DEFAULT_WHO_PAYS && format(',OPENBLAH_DEFAULT_WHO_PAYS={0}', vars.OPENBLAH_DEFAULT_WHO_PAYS) || '' }}" \
+            --set-secrets "LIVEKIT_URL=LIVEKIT_URL:latest,LIVEKIT_API_KEY=LIVEKIT_API_KEY:latest,LIVEKIT_API_SECRET=LIVEKIT_API_SECRET:latest,OPENBLAH_API_KEYS=OPENBLAH_API_KEYS:latest${{ steps.opt.outputs.extra }}"
           # Let the server's service account call the private worker.
           SA=$(gcloud run services describe "openblah-server-$TARGET" --region "$REGION" --format='value(spec.template.spec.serviceAccountName)')
           gcloud run services add-iam-policy-binding "openblah-agent-$TARGET" --region "$REGION" \
             --member "serviceAccount:$SA" --role roles/run.invoker --quiet
           echo "url=$(gcloud run services describe "openblah-server-$TARGET" --region "$REGION" --format='value(status.url)')" >> "$GITHUB_OUTPUT"
+
+      # The worker fetches product keys from the server, so it needs the server URL.
+      - name: Point worker at server
+        run: |
+          gcloud run services update "openblah-agent-$TARGET" --region "$REGION" \
+            --update-env-vars "OPENBLAH_SERVER_URL=${{ steps.server.outputs.url }}" --quiet
 
       - name: Smoke test warm-up
         run: |
@@ -105,14 +125,22 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.OPENBLAH_SMOKE_API_KEY }}" \
             -H "Content-Type: application/json" -d '{"userId":"deploy-smoke"}'
 
+      # Plain curl, not kupferco/viber's report action: that repo is private and
+      # this one is public, so the action cannot be resolved. Never fails the job.
       - name: Tell Viber how the deploy went
         if: always()
-        uses: kupferco/viber/.github/actions/report@main
-        with:
-          {
-            kind: deploy,
-            env: "${{ env.TARGET == 'prod' && 'prod' || 'staging' }}",
-            outcome: "${{ job.status == 'success' && 'deployed' || 'failed' }}",
-            viber-url: "${{ secrets.VIBER_URL }}",
-            hook-secret: "${{ secrets.VIBER_HOOK_SECRET }}",
-          }
+        env:
+          VIBER_URL: ${{ secrets.VIBER_URL }}
+          VIBER_HOOK_SECRET: ${{ secrets.VIBER_HOOK_SECRET }}
+          REPORT_ENV: ${{ env.TARGET == 'prod' && 'prod' || 'staging' }}
+          OUTCOME: ${{ job.status == 'success' && 'deployed' || 'failed' }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$VIBER_URL" ] || [ -z "$VIBER_HOOK_SECRET" ]; then
+            echo "VIBER_URL or VIBER_HOOK_SECRET not set; skipping the deploy report"; exit 0
+          fi
+          body=$(jq -n --arg repo "$GITHUB_REPOSITORY" --arg env "$REPORT_ENV" --arg sha "$GITHUB_SHA" \
+            --arg branch "$GITHUB_REF_NAME" --arg outcome "$OUTCOME" --arg runUrl "$RUN_URL" \
+            '{repo:$repo, env:$env, sha:$sha, branch:$branch, outcome:$outcome, runUrl:$runUrl}')
+          curl -sS -X POST "$VIBER_URL/hooks/deploy" -H "Authorization: Bearer $VIBER_HOOK_SECRET" \
+            -H "Content-Type: application/json" -d "$body" || echo "Viber deploy report failed (ignored)"

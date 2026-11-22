@@ -37,8 +37,13 @@ export type {
   Resolution,
   StoredKey,
 } from "./keys.js";
-export { TrialService, DEFAULT_TRIAL_LIMITS } from "./trial.js";
-export type { TrialLimits, TrialStatus } from "./trial.js";
+export {
+  TrialService,
+  ProductTrialService,
+  DEFAULT_TRIAL_LIMITS,
+  DEFAULT_PRODUCT_TRIAL_SECONDS,
+} from "./trial.js";
+export type { TrialLimits, TrialStatus, ProductTrialStatus } from "./trial.js";
 export { FirebaseTokenVerifier, PREVIEW_TEST_EMAIL } from "./accounts.js";
 export type { TokenVerifier, UserRecord, VerifiedUser } from "./accounts.js";
 export { OpenBlahServerClient } from "./client.js";
@@ -53,7 +58,15 @@ export {
   LANGUAGES,
   llmUsable,
 } from "./settings.js";
-export type { Language, LlmName, ModelChoice, SettingsLevel, SettingsPatch } from "./settings.js";
+export type {
+  Language,
+  LlmName,
+  ModelChoice,
+  SettingsLevel,
+  SettingsPatch,
+  WhoPays,
+} from "./settings.js";
+export { WHO_PAYS, DEFAULT_WHO_PAYS } from "./settings.js";
 export { vendorKeyChecker } from "./keycheck.js";
 export type { KeyChecker, KeyCheck } from "./keycheck.js";
 export {
@@ -65,6 +78,8 @@ export {
 } from "./usage.js";
 export type {
   CostAlert,
+  LivekitAlert,
+  UsageAlert,
   CostBreakdown,
   PriceTable,
   RoomUsage,
@@ -86,3 +101,25 @@ export {
   GUEST_HISTORY_DAYS,
 } from "./history.js";
 export type { CallHistory, HistoryListItem, Retention } from "./history.js";
+export {
+  WatchSession,
+  parseClientMessage,
+  signWatchTicket,
+  verifyWatchTicket,
+  WATCH_PROTOCOL_VERSION,
+  WATCH_AUDIO_SAMPLE_RATE,
+} from "./watch.js";
+export type {
+  AgentState,
+  RoomLink,
+  RoomLinkFactory,
+  RoomLinkHandlers,
+  WatchClientMessage,
+  WatchServerMessage,
+  WatchTicketClaims,
+  WatchTransport,
+} from "./watch.js";
+export { attachWatchSocket, WATCH_SOCKET_PATH } from "./watch-socket.js";
+export type { WatchSocketDeps } from "./watch-socket.js";
+export { createLiveKitRoomLink, pcmToInt16, int16ToPcm } from "./watch-link.js";
+export { createServerFromEnv } from "./config.js";

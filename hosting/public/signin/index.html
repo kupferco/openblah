@@ -1,0 +1,11 @@
+<!doctype html>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Opening OpenBlah…</title>
+<!-- Firebase sends the emailed sign-in link here (the continue URL). Free-account builds have no
+     universal links, so hand the full URL to the app through its openblah:// scheme. -->
+<script>
+  var link = location.href;
+  location.replace("openblah://signin?link=" + encodeURIComponent(link));
+</script>
+<p>Opening OpenBlah… If nothing happens, open the link on the phone where the app is installed.</p>

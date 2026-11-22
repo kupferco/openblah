@@ -278,6 +278,25 @@ A guest reads the call they joined, read-only, through their invite token (30 da
 
 ---
 
+### getKeyStatus()
+
+> **getKeyStatus**(`userId`): `Promise`\<[`KeyStatus`](../interfaces/KeyStatus.md)\>
+
+A product's pre-check: would this user's next voice start need their own key? Call it from
+your backend proxy or UI to show the banner before they tap. Product users only.
+
+#### Parameters
+
+##### userId
+
+`string`
+
+#### Returns
+
+`Promise`\<[`KeyStatus`](../interfaces/KeyStatus.md)\>
+
+---
+
 ### getMcpConnection()
 
 > **getMcpConnection**(`id`, `userId?`): `Promise`\<[`McpConnection`](../interfaces/McpConnection.md)\>

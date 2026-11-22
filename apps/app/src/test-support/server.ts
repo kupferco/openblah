@@ -23,6 +23,10 @@ export function fakeAuth() {
     signInWithGoogle: vi.fn(async () => {
       emit({ uid: "u1", email: "ana@example.com", displayName: "Ana" });
     }),
+    signInWithApple: vi.fn(async () => {
+      emit({ uid: "u2", email: "ana@privaterelay.appleid.com", displayName: "Ana" });
+    }),
+    appleAvailable: vi.fn(async () => true),
     signOut: vi.fn(async () => emit(null)),
     getIdToken: async () => "id-token",
   };

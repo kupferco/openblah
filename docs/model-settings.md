@@ -43,3 +43,27 @@ question; `confirm_settings_change` applies it only for the same person, room an
 The agent worker uses it for voice ("switch to Claude"): it asks the question aloud and confirms
 only in a **later** turn than the request, and only when the same person answers. The T13 approval
 queue is not built yet; when it lands, the confirmation here can move onto it.
+
+## Owner settings screen and the owner part of the settings tool
+
+A product owner switches who pays and sets the per-user cap without code:
+
+- **Screen:** open `GET /owner` on the server. Paste the product API key; it stays in the page's
+  memory, is never stored or put in a URL, and is only sent as a bearer token to
+  `/v1/product/settings`. Pick `user_key`, `product_trial` or `product`, set the minutes per user
+  per month (`0` = no cap) and save. A change applies to the next voice start; calls in progress
+  finish.
+- **REST:** `GET`/`PUT /v1/product/settings` takes `whoPays` and `userMonthlyMinutes` (a number,
+  `0` for no cap, `null` or `"default"` for the default). The reply has a `product` block:
+  `whoPays` (`null` until chosen), `userMonthlyMinutes` (`null` = no cap), `usersWithOwnKey`,
+  `keyRequiredUsers30d` and `productKeyMinutesThisMonth`.
+- **Counts only.** No names, ids or keys, and users marked `isTest` are left out of every count.
+  `keyRequiredUsers30d` counts people asked for a key (`key_required`), once per person per day.
+  `productKeyMinutesThisMonth` is agent time the product's key paid for.
+- **Default cap:** while the product pays (`whoPays: product`) and has set no cap, each user gets
+  60 minutes per month. Set `userMonthlyMinutes` to raise it, or `0` to turn it off. Without a
+  `whoPays` choice the server's `OPENBLAH_USER_MONTHLY_MINUTES` applies, as before.
+- **Settings MCP tool:** `get_settings` returns the same `product` block only when called with a
+  product API key that made the room; `propose_settings_change` and `confirm_settings_change`
+  accept `whoPays` and `userMonthlyMinutes` only from that key, never from the agent secret
+  (which is what an end user's voice session uses). They are saved on the product, not the room.
