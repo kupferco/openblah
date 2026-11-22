@@ -11,11 +11,11 @@ A WebSocket to the URL returned with the ticket. The watch connects to the cloud
 
 ## Getting in
 
-1. The watch (or the phone app, which hands the sign-in over) calls `POST /v1/me/watch/ticket` with `Authorization: Bearer <Firebase ID token>` and `{ "roomId": "rm_..." }`. The user must already be a participant of the room (start one with `POST /v1/me/calls`).
-2. The answer is `{ "ticket", "expiresIn": 60, "protocol": 1, "socketUrl" }`. The ticket is signed, valid for one minute and tied to the user and the room.
+1. The watch calls `POST /v1/me/watch/ticket` with `Authorization: Bearer <Firebase ID token>`. With `{ "roomId": "rm_..." }` it joins a room the user is already a participant of. Without a `roomId` (the usual case from the watch) the server starts a new call with the agent on, hosted by the user (`{ "displayName": "..." }` is optional, default "Watch").
+2. The answer is `{ "ticket", "roomId", "expiresIn": 60, "protocol": 1, "socketUrl" }`. The ticket is signed, valid for one minute and tied to the user and the room.
 3. The watch opens the socket and sends `start` with the ticket.
 
-The endpoint answers 404 unless the server has `OPENBLAH_WATCH_SECRET` set. `OPENBLAH_WATCH_SOCKET_URL` is the `wss://` URL returned as `socketUrl`.
+The endpoint answers 404 unless the server has `OPENBLAH_WATCH_SECRET` set. `OPENBLAH_WATCH_SOCKET_URL` is the `wss://` URL returned as `socketUrl`; the server listens for it at `/v1/watch/socket` on its normal port. A socket that sends nothing for 60 seconds is dropped, and binary frames over 128 KB are refused.
 
 ## Watch to server
 
