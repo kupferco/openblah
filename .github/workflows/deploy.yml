@@ -125,14 +125,22 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.OPENBLAH_SMOKE_API_KEY }}" \
             -H "Content-Type: application/json" -d '{"userId":"deploy-smoke"}'
 
+      # Plain curl, not kupferco/viber's report action: that repo is private and
+      # this one is public, so the action cannot be resolved. Never fails the job.
       - name: Tell Viber how the deploy went
         if: always()
-        uses: kupferco/viber/.github/actions/report@main
-        with:
-          {
-            kind: deploy,
-            env: "${{ env.TARGET == 'prod' && 'prod' || 'staging' }}",
-            outcome: "${{ job.status == 'success' && 'deployed' || 'failed' }}",
-            viber-url: "${{ secrets.VIBER_URL }}",
-            hook-secret: "${{ secrets.VIBER_HOOK_SECRET }}",
-          }
+        env:
+          VIBER_URL: ${{ secrets.VIBER_URL }}
+          VIBER_HOOK_SECRET: ${{ secrets.VIBER_HOOK_SECRET }}
+          REPORT_ENV: ${{ env.TARGET == 'prod' && 'prod' || 'staging' }}
+          OUTCOME: ${{ job.status == 'success' && 'deployed' || 'failed' }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$VIBER_URL" ] || [ -z "$VIBER_HOOK_SECRET" ]; then
+            echo "VIBER_URL or VIBER_HOOK_SECRET not set; skipping the deploy report"; exit 0
+          fi
+          body=$(jq -n --arg repo "$GITHUB_REPOSITORY" --arg env "$REPORT_ENV" --arg sha "$GITHUB_SHA" \
+            --arg branch "$GITHUB_REF_NAME" --arg outcome "$OUTCOME" --arg runUrl "$RUN_URL" \
+            '{repo:$repo, env:$env, sha:$sha, branch:$branch, outcome:$outcome, runUrl:$runUrl}')
+          curl -sS -X POST "$VIBER_URL/hooks/deploy" -H "Authorization: Bearer $VIBER_HOOK_SECRET" \
+            -H "Content-Type: application/json" -d "$body" || echo "Viber deploy report failed (ignored)"
