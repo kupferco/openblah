@@ -2,7 +2,7 @@
 
 **An open-source voice layer for group conversations, with an AI in the middle.**
 
-> **Status:** early and under active development. Nothing described below exists yet; it is all planned.
+> **Status:** early and under active development. The SDK packages (0.1.0) and the server and agent deploy workflow are ready, but **nothing is live yet**: the first npm release and the first Cloud Run deploy wait for the owner steps in [docs/deploy.md](docs/deploy.md#owner-checklist-first-release-and-deploy).
 
 Think of OpenBlah as a walking meeting room. Your phone stays in your pocket, you talk, and you can invite others (family, colleagues) into the same voice room. They can join through the app, or through a browser link with nothing to install.
 
