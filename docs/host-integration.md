@@ -5,10 +5,35 @@ For products that embed OpenBlah (Housekeeper, TeraPay, your own app). Server en
 ## The three steps
 
 1. **Your backend** calls `POST /v1/rooms` and `POST /v1/tokens` with your OpenBlah API key (`Authorization: Bearer …`). It vouches for the user: the server trusts the `userId` you send.
-2. **Your client** mounts `<OpenBlahRoom serverUrl token />` from `@openblah/web/react` or `@openblah/react-native` with the token ([quickstart.md](quickstart.md)).
+2. **Your client** mounts `<OpenBlahRoom serverUrl token />` from `@openblah/web/react` or `@openblah/react-native` with the token ([quickstart.md](quickstart.md)), or drops in `<OpenBlahMicButton start />` for a voice-only mic with no call screen (see below).
 3. **You register tools**: MCP servers or webhook tools in the `mcp` object of `POST /v1/rooms`.
 
 Never ship the API key in a client. Point the client's `api.baseUrl` at a proxy on your backend that adds it.
+
+## Drop-in voice mic button
+
+`<OpenBlahMicButton />` is a round mic you place anywhere, for example in the centre of a bottom nav. Voice only: no transcript and no call screen.
+
+```tsx
+// Web: import { OpenBlahProvider, OpenBlahMicButton } from "@openblah/web/react";
+// React Native: the same names from "@openblah/react-native".
+<OpenBlahProvider client={client}>
+  <App />
+  <OpenBlahMicButton
+    start={async () => (await fetch("/my-backend/voice-token", { method: "POST" })).json()} // { serverUrl, token }
+    onError={(e) => (e instanceof KeyRequiredError ? openKeySheet() : toast(e.message))}
+    theme={{ accent: tokens.primary, accentText: tokens.onPrimary }}
+    size={48}
+  />
+</OpenBlahProvider>
+```
+
+- **Tap to start, tap again to end.** `start` runs on each start tap and returns fresh `{ serverUrl, token }` from your backend. A second tap, or a second button, while a session is starting or running never opens another session.
+- **App-wide.** The session lives in the client of `<OpenBlahProvider>`. Mount the provider once above your navigator; the call survives navigation, and every `<OpenBlahMicButton />` shows the same state.
+- **States.** Idle is a plain mic. A halo shows _listening_ (theme `accent`), _thinking_ (amber) and _speaking_ (green); override with `haloColors`. Each state has an accessible label (`labels.micStart`, `micListening`, `micThinking`, `micSpeaking`, `micEnd`). Motion stops with `prefers-reduced-motion` on the web.
+- **Theme.** `theme` (`accent`, `accentText`, `surface`, `text`, `border`, `radius`, `spacing`, `fontSize`) and `size` come from your design tokens.
+- **Write actions.** When the agent asks to confirm a write action, a compact card with Yes / Cancel shows above the button. Replace it with `renderConfirmation={({ summary, approve, decline }) => …}` or turn it off with `hideConfirmation` and use `useToolApprovals`.
+- **Your own button.** `useMicButton({ start })` returns `{ state, active, toggle, approvals }` if you want a different look.
 
 ## Embedding with MCP tools
 

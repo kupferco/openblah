@@ -42,6 +42,10 @@ const client = createOpenBlahClient(); // OpenBlahClient plus the native audio s
 
 Tokens come from the OpenBlah server (`POST /v1/tokens`). See `apps/example/src/App.tsx`.
 
+## Mic button
+
+`<OpenBlahMicButton start={…} />` is a drop-in voice mic (tap to start, tap to end, halo for listening, thinking and speaking, no call screen). It draws itself from views, so it needs no icon library. See [host-integration.md](host-integration.md#drop-in-voice-mic-button).
+
 ## Audio: screen lock and Bluetooth
 
 `createOpenBlahClient` sets the iOS audio category to `playAndRecord` (mode `voiceChat`, options `allowBluetooth`, `allowBluetoothA2DP`, `defaultToSpeaker`) and starts the LiveKit audio session before connecting, and stops it after leaving. Together with the `audio` background mode the call keeps running with the screen locked, and routes to AirPods or other Bluetooth headsets when connected. `registerOpenBlahGlobals` turns off the library's automatic audio session management so this configuration is the one that applies.

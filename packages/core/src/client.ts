@@ -272,6 +272,25 @@ export class OpenBlahClient {
     this.emit("connected", undefined);
   }
 
+  private startPending = false;
+
+  /**
+   * Start a session unless one is running or already starting (also while `getJoin` is still
+   * fetching a token). Returns false when ignored. Used by the mic button, so two taps or two
+   * buttons never open two sessions.
+   */
+  async startOnce(getJoin: () => Promise<{ serverUrl: string; token: string }>): Promise<boolean> {
+    if (this.startPending || this.snapshot.status !== "disconnected") return false;
+    this.startPending = true;
+    try {
+      const j = await getJoin();
+      await this.connect(j.serverUrl, j.token);
+      return true;
+    } finally {
+      this.startPending = false;
+    }
+  }
+
   /** Leave the room. Safe to call when not connected. */
   async disconnect(): Promise<void> {
     const room = this.room;

@@ -11,3 +11,4 @@ export { shareInvite, type ShareInviteOptions, type ShareLike } from "./invite.j
 export { connectMcpInApp, type ConnectMcpInAppOptions } from "./mcp.js";
 export { OpenBlahRoom, type OpenBlahRoomProps } from "./room.js";
 export { OpenBlahAddKeySheet, type OpenBlahAddKeySheetProps } from "./key-sheet.js";
+export { OpenBlahMicButton, type OpenBlahMicButtonProps } from "./mic-button.js";

@@ -7,6 +7,7 @@ Same client and hooks as `@openblah/web`. Needs an Expo dev build, not Expo Go.
 
 - [AudioSessionLike](interfaces/AudioSessionLike.md)
 - [OpenBlahAddKeySheetProps](interfaces/OpenBlahAddKeySheetProps.md)
+- [OpenBlahMicButtonProps](interfaces/OpenBlahMicButtonProps.md)
 - [OpenBlahRoomProps](interfaces/OpenBlahRoomProps.md)
 - [ShareInviteOptions](interfaces/ShareInviteOptions.md)
 - [ShareLike](interfaces/ShareLike.md)
@@ -25,6 +26,7 @@ Same client and hooks as `@openblah/web`. Needs an Expo dev build, not Expo Go.
 - [createCallAudio](functions/createCallAudio.md)
 - [createOpenBlahClient](functions/createOpenBlahClient.md)
 - [OpenBlahAddKeySheet](functions/OpenBlahAddKeySheet.md)
+- [OpenBlahMicButton](functions/OpenBlahMicButton.md)
 - [OpenBlahRoom](functions/OpenBlahRoom.md)
 - [registerOpenBlahGlobals](functions/registerOpenBlahGlobals.md)
 - [shareInvite](functions/shareInvite.md)
@@ -217,6 +219,36 @@ Re-exports [McpConnection](../web/interfaces/McpConnection.md)
 
 ---
 
+### MicButtonState
+
+Re-exports [MicButtonState](../web/react/type-aliases/MicButtonState.md)
+
+---
+
+### MicConfirmation
+
+Re-exports [MicConfirmation](../web/react/interfaces/MicConfirmation.md)
+
+---
+
+### micHaloColor
+
+Re-exports [micHaloColor](../web/react/functions/micHaloColor.md)
+
+---
+
+### micLabel
+
+Re-exports [micLabel](../web/react/functions/micLabel.md)
+
+---
+
+### MicSession
+
+Re-exports [MicSession](../web/react/interfaces/MicSession.md)
+
+---
+
 ### ModelSettings
 
 Re-exports [ModelSettings](../web/interfaces/ModelSettings.md)
@@ -268,6 +300,12 @@ Re-exports [OpenBlahClientOptions](../web/interfaces/OpenBlahClientOptions.md)
 ### OpenBlahLabels
 
 Re-exports [OpenBlahLabels](../web/react/interfaces/OpenBlahLabels.md)
+
+---
+
+### OpenBlahMicButtonBaseProps
+
+Re-exports [OpenBlahMicButtonBaseProps](../web/react/interfaces/OpenBlahMicButtonBaseProps.md)
 
 ---
 
@@ -442,6 +480,18 @@ Re-exports [useInviteRequests](../web/react/functions/useInviteRequests.md)
 ### useKeyStatus
 
 Re-exports [useKeyStatus](../web/react/functions/useKeyStatus.md)
+
+---
+
+### useMicButton
+
+Re-exports [useMicButton](../web/react/functions/useMicButton.md)
+
+---
+
+### UseMicButtonOptions
+
+Re-exports [UseMicButtonOptions](../web/react/interfaces/UseMicButtonOptions.md)
 
 ---
 
