@@ -10,6 +10,7 @@ import {
 } from "@livekit/agents";
 import { RoomEvent, ParticipantKind } from "@livekit/rtc-node";
 import { configFromEnv } from "./config.js";
+import { idleProcessesFromEnv, pruneInferenceRunners } from "./inference.js";
 import { writeLog } from "./latency.js";
 import {
   attachLatencyLogging,
@@ -276,12 +277,15 @@ if (process.argv[1] === import.meta.filename) {
       res.end("ok");
     }).listen(port, "0.0.0.0");
   }
+  // Memory: load only the turn detector we use, and keep one warm job process.
+  pruneInferenceRunners();
   cli.runApp(
     new ServerOptions({
       agent: import.meta.filename,
       agentName: configFromEnv().dispatchName,
       host: "127.0.0.1",
       port: process.env.PORT && process.argv.includes("start") ? 8081 : port,
+      numIdleProcesses: idleProcessesFromEnv(),
     }),
   );
 }
