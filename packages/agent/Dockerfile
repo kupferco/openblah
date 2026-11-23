@@ -16,16 +16,17 @@ WORKDIR /app
 COPY --from=build /out/node_modules ./node_modules
 COPY --from=build /out/dist ./dist
 COPY --from=build /out/package.json ./
-# The LiveKit plugins cache model files under HF_HOME (default: ~/.cache/huggingface). The build
-# step used to run as root (HOME=/root) while the container runs as `node` (HOME=/home/node), so the
-# downloaded files were never found at runtime. Pin the cache to a fixed path owned by `node`.
-ENV HF_HOME=/app/.cache/huggingface
-RUN mkdir -p "$HF_HOME" && chown -R node:node /app
+# The LiveKit plugins (JS) cache model files under ~/.cache/huggingface and ignore HF_HOME (the
+# build log of the failed deploy shows them written to /home/node/.cache/huggingface even with
+# HF_HOME set). Build and runtime must both run as `node` with the same HOME, so pin HOME and
+# check that exact path.
+ENV HOME=/home/node
+RUN mkdir -p "$HOME/.cache/huggingface" && chown -R node:node /app "$HOME"
 USER node
 # Bake the VAD and turn-detector models into the image so a cold start does not download them.
 RUN node dist/worker.js download-files
-# Fail the build if the turn-detector model is missing from the final image.
-RUN find "$HF_HOME" -name 'model_q8.onnx' | grep -q . \
- || { echo "turn-detector model_q8.onnx missing under $HF_HOME" >&2; exit 1; }
+# Fail the build if the turn-detector model is missing from the path the worker reads at runtime.
+RUN find "$HOME/.cache/huggingface" -name 'model_q8.onnx' | grep -q . \
+ || { echo "turn-detector model_q8.onnx missing under $HOME/.cache/huggingface" >&2; exit 1; }
 EXPOSE 8080
 CMD ["node", "dist/worker.js", "start"]
