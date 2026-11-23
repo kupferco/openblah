@@ -120,8 +120,9 @@ export function buildMcpToolset(opts: BuildToolsOptions): McpTools {
       const exposed = (count.get(tool.name) ?? 0) > 1 ? `${server.id}_${tool.name}` : tool.name;
       const readOnly = isReadOnly(tool, config.toolOverrides?.[tool.name]);
       if (!readOnly) anyWrite = true;
+      // Anonymous: the object key is the tool's name. @livekit/agents 1.10 rejects an object
+      // entry that also carries its own `name` ("tools object entry ... must be anonymous").
       tools[exposed] = llm.tool({
-        name: exposed,
         description: tool.description,
         parameters: (provider.formatToolSchema?.(tool.inputSchema) ?? tool.inputSchema) as never,
         execute: async (args: Record<string, unknown>) => {
@@ -221,7 +222,6 @@ export function buildMcpToolset(opts: BuildToolsOptions): McpTools {
   }
   if (anyWrite) {
     tools[CONFIRM_TOOL_NAME] = llm.tool({
-      name: CONFIRM_TOOL_NAME,
       description:
         "Call this only after the person has answered your read-back of a pending action out loud. " +
         "approve=true if they said yes, approve=false if they said no or to cancel. Never call it on your own.",
