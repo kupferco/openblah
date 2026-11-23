@@ -224,6 +224,8 @@ export function createApp(deps: AppDeps): Hono {
   const now = deps.now ?? (() => new Date());
   const usage = deps.usage ?? new UsageService(storage, { now });
   const worker: WorkerWaker = deps.worker ?? { wake: async () => false };
+  /** How long a start waits for a cold worker to register with LiveKit (it takes about 20 s). */
+  const WORKER_READY_MS = 45_000;
   const warmupLimit = new RateLimiter(deps.warmupPerMinute ?? 6, 60_000, deps.nowMs);
   // Waking is idempotent; coalesce so a burst of users causes one request to the worker.
   let lastWake = 0;
@@ -1291,8 +1293,11 @@ export function createApp(deps: AppDeps): Hono {
         body: refusalBody(keys),
       };
     }
-    // Make sure the worker is up (cold start); the call works as a plain room until it joins.
+    // Make sure the worker is up (cold start), and registered: LiveKit does not hold a dispatch
+    // for a worker that registers later, so one sent too early leaves the room without an agent.
+    // The call works as a plain room until it joins; past the wait it is dispatched anyway.
     await worker.wake().catch(() => false);
+    await worker.ready?.(WORKER_READY_MS).catch(() => false);
     const r = await livekit.dispatchAgent(
       room.id,
       await dispatchMetadata(room, await settingsForAgent(room)),

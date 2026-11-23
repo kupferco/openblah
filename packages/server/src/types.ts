@@ -212,4 +212,11 @@ export interface LiveKitGateway {
 export interface WorkerWaker {
   /** Resolves true when the worker answered, false when it is not configured or unreachable. */
   wake(): Promise<boolean>;
+  /**
+   * Resolves true once the worker is registered with LiveKit and can take a job, false when
+   * `timeoutMs` passes first. Answering `wake` is not that: the worker's port answers within
+   * a second of starting, about twenty before it registers, and a dispatch sent in between
+   * is never delivered.
+   */
+  ready?(timeoutMs: number): Promise<boolean>;
 }

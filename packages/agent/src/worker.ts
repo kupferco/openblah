@@ -1,4 +1,4 @@
-import { createServer } from "node:http";
+import { createServer, get as httpGet } from "node:http";
 import {
   cli,
   defineAgent,
@@ -246,9 +246,32 @@ if (process.argv[1] === import.meta.filename) {
   // take longer (or never happen if LiveKit is unreachable), so the revision would be
   // marked failed. Listen right away; a request here also wakes the instance (warm-up).
   // LiveKit's built-in server moves to an internal port.
+  //
+  // Answering here says the instance is up, not that it can take a job: that is `/ready`, which
+  // passes on LiveKit's own health check (200 once the worker is registered, 503 before). The
+  // server waits on it before dispatching, because LiveKit does not hold a dispatch for a worker
+  // that registers later.
   const port = Number(process.env.PORT ?? 8081);
   if (process.env.PORT && process.argv.includes("start")) {
-    createServer((_req, res) => {
+    createServer((req, res) => {
+      if (req.url === "/ready") {
+        const check = httpGet(
+          { host: "127.0.0.1", port: 8081, path: "/", timeout: 2_000 },
+          (lk) => {
+            res.writeHead(lk.statusCode === 200 ? 200 : 503, { "content-type": "text/plain" });
+            res.end(lk.statusCode === 200 ? "ready" : "starting");
+            lk.resume();
+          },
+        );
+        check.on("timeout", () => check.destroy());
+        check.on("error", () => {
+          // LiveKit's server is not listening yet: still starting.
+          if (res.headersSent) return;
+          res.writeHead(503, { "content-type": "text/plain" });
+          res.end("starting");
+        });
+        return;
+      }
       res.writeHead(200, { "content-type": "text/plain" });
       res.end("ok");
     }).listen(port, "0.0.0.0");
