@@ -2,7 +2,9 @@
 
 All notable changes to the published packages (`@openblah/core`, `@openblah/web`, `@openblah/react-native`, `@openblah/server`). The SDK packages share one version. OpenBlah is **0.x: the API may change in any minor release.**
 
-## Unreleased
+## 0.2.0
+
+SDK packages (`core`, `web`, `react-native`) 0.2.0; `@openblah/server` 0.1.1.
 
 - `@openblah/web` and `@openblah/react-native`: drop-in `<OpenBlahMicButton />` (voice only, app-wide single session, halo for listening, thinking and speaking, compact write-action confirmation, themable). `@openblah/core`: `useMicButton`, `client.startOnce`, mic labels.
 - `@openblah/core` (and so both SDKs): `OpenBlahApi.startCall` and `warmup` for signed-in app users, `client.setMode`, `useRoomMode` and `mode` in the snapshot.

@@ -14,6 +14,13 @@ Never ship the API key in a client. Point the client's `api.baseUrl` at a proxy 
 
 `<OpenBlahMicButton />` is a round mic you place anywhere, for example in the centre of a bottom nav. Voice only: no transcript and no call screen.
 
+Available from **0.2.0**. There is no package called `@openblah/sdk`; the SDK is two packages (both pull in `@openblah/core`):
+
+```sh
+npm install @openblah/web@0.2.0            # web: import from "@openblah/web/react"
+npm install @openblah/react-native@0.2.0   # React Native / Expo: import from "@openblah/react-native"
+```
+
 ```tsx
 // Web: import { OpenBlahProvider, OpenBlahMicButton } from "@openblah/web/react";
 // React Native: the same names from "@openblah/react-native".
