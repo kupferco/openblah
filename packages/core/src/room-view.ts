@@ -98,6 +98,13 @@ export interface OpenBlahLabels {
   keyRequiredTrialUsed: string;
   /** Button that opens the add-key sheet. */
   addKey: string;
+  /** Mic button: idle (tap to start) and the live states, used as accessible labels. */
+  micStart: string;
+  micEnd: string;
+  micConnecting: string;
+  micListening: string;
+  micThinking: string;
+  micSpeaking: string;
 }
 
 /** The English labels. @public */
@@ -134,6 +141,12 @@ export const defaultLabels: OpenBlahLabels = {
   keyRequired: "Add your own key to keep using voice.",
   keyRequiredTrialUsed: "The free allowance is used up. Add your own key to keep using voice.",
   addKey: "Add your key",
+  micStart: "Start voice",
+  micEnd: "End voice",
+  micConnecting: "Starting voice…",
+  micListening: "Listening. Tap to end",
+  micThinking: "Thinking. Tap to end",
+  micSpeaking: "Speaking. Tap to end",
 };
 
 /** Fill the gaps of partial labels with {@link defaultLabels}. @public */
