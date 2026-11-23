@@ -77,6 +77,10 @@ export default function Call({ serverUrl, token }: { serverUrl: string; token: s
 }
 ```
 
+## Voice-only mic button
+
+No call screen wanted? Place `<OpenBlahMicButton start={…} />` (from `@openblah/web/react` or `@openblah/react-native`) inside `<OpenBlahProvider>`. See [host-integration.md](host-integration.md#drop-in-voice-mic-button).
+
 ## 4. Make it yours
 
 - **Theme**: `theme={{ accent: "#7c3aed", radius: 4 }}` (see `OpenBlahTheme`).

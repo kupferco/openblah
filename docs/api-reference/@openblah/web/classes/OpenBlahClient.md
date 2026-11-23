@@ -512,6 +512,26 @@ Host: choose which saved MCP servers are on in this room. Applies when the agent
 
 ---
 
+### startOnce()
+
+> **startOnce**(`getJoin`): `Promise`\<`boolean`\>
+
+Start a session unless one is running or already starting (also while `getJoin` is still
+fetching a token). Returns false when ignored. Used by the mic button, so two taps or two
+buttons never open two sessions.
+
+#### Parameters
+
+##### getJoin
+
+() => `Promise`\<\{ `serverUrl`: `string`; `token`: `string`; \}\>
+
+#### Returns
+
+`Promise`\<`boolean`\>
+
+---
+
 ### testMcpServer()
 
 > **testMcpServer**(`id`, `userId?`): `Promise`\<\{ `message`: `string`; `ok`: `boolean`; \}\>

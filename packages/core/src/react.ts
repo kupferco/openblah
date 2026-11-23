@@ -41,6 +41,11 @@ function useClient(): OpenBlahClient {
   return c;
 }
 
+/** The client of the nearest provider, for the SDK's own components. @internal */
+export function useClientHandle(): OpenBlahClient {
+  return useClient();
+}
+
 function useSnapshot(client: OpenBlahClient): ClientSnapshot {
   return useSyncExternalStore(
     (cb) => client.on("change", cb),
@@ -354,3 +359,13 @@ export {
   type OpenBlahRoomPart,
   type OpenBlahRoomBaseProps,
 } from "./room-view.js";
+export {
+  useMicButton,
+  type MicButtonState,
+  type MicSession,
+  type UseMicButtonOptions,
+  type MicConfirmation,
+  type OpenBlahMicButtonBaseProps,
+  micHaloColor,
+  micLabel,
+} from "./mic-button.js";

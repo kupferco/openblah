@@ -134,6 +134,44 @@ Shown when the product does not pay for voice and the user needs their own key.
 
 ---
 
+### micConnecting
+
+> **micConnecting**: `string`
+
+---
+
+### micEnd
+
+> **micEnd**: `string`
+
+---
+
+### micListening
+
+> **micListening**: `string`
+
+---
+
+### micSpeaking
+
+> **micSpeaking**: `string`
+
+---
+
+### micStart
+
+> **micStart**: `string`
+
+Mic button: idle (tap to start) and the live states, used as accessible labels.
+
+---
+
+### micThinking
+
+> **micThinking**: `string`
+
+---
+
 ### mute
 
 > **mute**: `string`
