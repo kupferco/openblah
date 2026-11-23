@@ -152,6 +152,7 @@ export function createTtsProvider(c: Choice<TtsName>, env: Env = process.env): T
         apiKey: env.CARTESIA_API_KEY,
         model: c.model,
         voice: c.voice || env.CARTESIA_VOICE_ID,
+        voicePt: env.CARTESIA_VOICE_ID_PT,
       });
   }
 }
