@@ -2,6 +2,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { llm } from "@livekit/agents";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { geminiToolSchema } from "../providers/gemini.js";
@@ -159,6 +160,26 @@ describe("MCP client in the agent", () => {
     expect(s.hooks.sayHold).toHaveBeenCalledOnce();
     expect(s.hooks.setWorking).toHaveBeenNthCalledWith(1, true, "get weather");
     expect(s.hooks.setWorking).toHaveBeenLastCalledWith(false);
+    await connection.close();
+  });
+
+  // Prod crash: "tools object entry "add_city" must be anonymous". LiveKit's ToolContext
+  // (what AgentSession builds from the tools object) rejects entries that carry a name.
+  it("builds tools LiveKit's ToolContext accepts, including the confirm tool", async () => {
+    const s = setup();
+    const connection = await connectMcp(url);
+    const tools = buildMcpTools({
+      roomId: "rm_1",
+      config: s.config,
+      provider: {},
+      log: s.log,
+      hooks: s.hooks,
+      servers: [{ id: "demo", ownerId: "host-1", connection, tools: await connection.listTools() }],
+    });
+    const ctx = new llm.ToolContext(tools as never);
+    expect(Object.keys(ctx.functionTools)).toEqual(
+      expect.arrayContaining(["get_weather", "book_table", "confirm_pending_action"]),
+    );
     await connection.close();
   });
 });
