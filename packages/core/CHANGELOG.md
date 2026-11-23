@@ -1,5 +1,11 @@
 # @openblah/core
 
+## 0.2.1
+
+### Patch Changes
+
+- Web: play the agent's voice. The client now attaches remote audio tracks to a hidden `<audio>` element (browsers play nothing otherwise), calls `room.startAudio()` after connecting, and adds `audioBlocked` to the snapshot plus `client.startAudio()` for a "tap to hear" button when the browser blocks autoplay. New `audioContainer` option; no change on React Native.
+
 ## 0.2.0
 
 ### Minor Changes

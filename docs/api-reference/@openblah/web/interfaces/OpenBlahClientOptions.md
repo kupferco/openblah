@@ -25,6 +25,17 @@ ready [OpenBlahApi](../classes/OpenBlahApi.md). Without it those methods throw.
 
 ---
 
+### audioContainer?
+
+> `optional` **audioContainer?**: \{ `appendChild`(`el`): `unknown`; \} \| `null`
+
+Where the `<audio>` elements for other participants (the agent) go. A browser only plays a
+remote track once it is attached to a media element, so the client does it. Defaults to
+`document.body` when there is a DOM; `null` turns it off (you attach tracks yourself). On
+React Native there is no DOM and LiveKit plays remote audio natively.
+
+---
+
 ### beforeConnect?
 
 > `optional` **beforeConnect?**: () => `Promise`\<`void`\>

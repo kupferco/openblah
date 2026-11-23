@@ -196,3 +196,65 @@ describe("tool approvals", () => {
     expect(client.getSnapshot().approvals).toEqual([]);
   });
 });
+
+// Housekeeper on the web: the agent spoke (state went to "speaking") but nothing was heard,
+// because a browser only plays a remote track once it is attached to an <audio> element.
+describe("OpenBlahClient remote audio", () => {
+  const track = (kind: "audio" | "video") => {
+    const el = { style: {} as Record<string, string>, remove: vi.fn() };
+    return {
+      el,
+      kind,
+      attach: vi.fn(() => el),
+      detach: vi.fn(() => [el]),
+    };
+  };
+
+  it("plays the agent's audio track and removes it on unsubscribe and disconnect", async () => {
+    const f = fakeRoom();
+    const container = { appendChild: vi.fn() };
+    const client = new OpenBlahClient({
+      createRoom: () => f.room as unknown as RoomLike,
+      audioContainer: container,
+    });
+    await client.connect("wss://lk", "tok");
+    const voice = track("audio");
+    const video = track("video");
+    f.emit(RoomEvent.TrackSubscribed, voice);
+    f.emit(RoomEvent.TrackSubscribed, video);
+    expect(container.appendChild).toHaveBeenCalledOnce();
+    expect(container.appendChild).toHaveBeenCalledWith(voice.el);
+    expect(voice.el.style.display).toBe("none");
+    expect(video.attach).not.toHaveBeenCalled();
+
+    f.emit(RoomEvent.TrackUnsubscribed, voice);
+    expect(voice.el.remove).toHaveBeenCalledOnce();
+
+    const again = track("audio");
+    f.emit(RoomEvent.TrackSubscribed, again);
+    await client.disconnect();
+    expect(again.el.remove).toHaveBeenCalledOnce();
+  });
+
+  it("starts audio after connecting and reports when the browser blocks it", async () => {
+    const f = fakeRoom();
+    const room = Object.assign(f.room, {
+      canPlaybackAudio: false,
+      startAudio: vi.fn(async (): Promise<void> => {
+        throw new Error("NotAllowedError");
+      }),
+    });
+    const client = new OpenBlahClient({
+      createRoom: () => room as unknown as RoomLike,
+      audioContainer: null,
+    });
+    await client.connect("wss://lk", "tok");
+    expect(room.startAudio).toHaveBeenCalledOnce();
+    expect(client.getSnapshot().audioBlocked).toBe(true);
+
+    room.startAudio.mockResolvedValueOnce(undefined);
+    room.canPlaybackAudio = true;
+    await client.startAudio();
+    expect(client.getSnapshot().audioBlocked).toBe(false);
+  });
+});

@@ -512,6 +512,19 @@ Host: choose which saved MCP servers are on in this room. Applies when the agent
 
 ---
 
+### startAudio()
+
+> **startAudio**(): `Promise`\<`void`\>
+
+Let the browser play the agent's audio. Call it from a tap when `audioBlocked` is true.
+Never throws; a no-op on React Native.
+
+#### Returns
+
+`Promise`\<`void`\>
+
+---
+
 ### startOnce()
 
 > **startOnce**(`getJoin`): `Promise`\<`boolean`\>

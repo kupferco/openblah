@@ -28,6 +28,15 @@ Write actions waiting for confirmation. Empty unless you own the tool credential
 
 ---
 
+### audioBlocked
+
+> **audioBlocked**: `boolean`
+
+True when the browser blocked the agent's audio (autoplay policy). Show a "Tap to hear"
+button that calls `startAudio()`. Always false on React Native.
+
+---
+
 ### error
 
 > **error**: `string` \| `null`
