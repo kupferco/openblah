@@ -11,6 +11,11 @@ RUN pnpm --filter @openblah/agent build \
 
 # glibc image: the native LiveKit/onnx modules do not run on alpine (musl).
 FROM node:22-slim
+# The native LiveKit client (rtc-node) verifies TLS against the OS CA store, which the slim image
+# lacks; without it joining a room fails with "no native root CA certificates found". (Node's own
+# HTTPS bundles its CAs, so registering the worker still works, which hides the problem.)
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production PORT=8080
 WORKDIR /app
 COPY --from=build /out/node_modules ./node_modules
