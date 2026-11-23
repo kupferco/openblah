@@ -1,4 +1,11 @@
-import { Room, RoomEvent, ConnectionState, type Participant } from "livekit-client";
+import {
+  Room,
+  RoomEvent,
+  ConnectionState,
+  Track,
+  type Participant,
+  type RemoteTrack,
+} from "livekit-client";
 import { connectMcpServer, type ConnectMcpServerOptions } from "./mcp.js";
 import {
   OpenBlahApi,
@@ -91,6 +98,11 @@ export interface ClientSnapshot {
    */
   roomMetadata: string | null;
   error: string | null;
+  /**
+   * True when the browser blocked the agent's audio (autoplay policy). Show a "Tap to hear"
+   * button that calls `startAudio()`. Always false on React Native.
+   */
+  audioBlocked: boolean;
 }
 
 /** Events emitted by {@link OpenBlahClient}. */
@@ -164,6 +176,26 @@ export interface OpenBlahClientOptions {
   api?: OpenBlahApi | OpenBlahApiOptions;
   /** LiveKit URL to use when joining by invite and the server does not return one. */
   livekitUrl?: string;
+  /**
+   * Where the `<audio>` elements for other participants (the agent) go. A browser only plays a
+   * remote track once it is attached to a media element, so the client does it. Defaults to
+   * `document.body` when there is a DOM; `null` turns it off (you attach tracks yourself). On
+   * React Native there is no DOM and LiveKit plays remote audio natively.
+   */
+  audioContainer?: { appendChild(el: unknown): unknown } | null;
+}
+
+/** An attached media element, typed without the DOM lib (React Native builds lack it). @internal */
+interface MediaElementLike {
+  style: { display: string };
+  remove(): void;
+}
+
+/** The parts of a remote track the client uses to play it. @internal */
+interface PlayableTrack {
+  kind: RemoteTrack["kind"];
+  attach(): MediaElementLike;
+  detach(): MediaElementLike[];
 }
 
 type Listener<T> = (payload: T) => void;
@@ -209,8 +241,32 @@ export class OpenBlahClient {
     role: null,
     roomMetadata: null,
     error: null,
+    audioBlocked: false,
   };
+  private readonly audioContainer?: OpenBlahClientOptions["audioContainer"];
+  private readonly playing = new Set<PlayableTrack>();
   private readonly onRoomEvent = () => this.refresh();
+  private readonly onTrackSubscribed = (track: PlayableTrack) => {
+    if (track.kind !== Track.Kind.Audio || this.playing.has(track)) return;
+    const container =
+      this.audioContainer !== undefined
+        ? this.audioContainer
+        : ((globalThis as { document?: { body?: OpenBlahClientOptions["audioContainer"] } })
+            .document?.body ?? null);
+    if (!container) return;
+    const el = track.attach();
+    el.style.display = "none";
+    container.appendChild(el);
+    this.playing.add(track);
+  };
+  private readonly onTrackUnsubscribed = (track: PlayableTrack) => {
+    if (!this.playing.delete(track)) return;
+    for (const el of track.detach()) el.remove();
+  };
+  private readonly onAudioPlayback = () => {
+    const room = this.room as { canPlaybackAudio?: boolean } | null;
+    this.update({ audioBlocked: room?.canPlaybackAudio === false });
+  };
   private readonly onData = (
     payload: Uint8Array,
     participant?: Participant,
@@ -230,6 +286,7 @@ export class OpenBlahClient {
     this.beforeConnect = options.beforeConnect;
     this.afterDisconnect = options.afterDisconnect;
     this.livekitUrl = options.livekitUrl;
+    this.audioContainer = options.audioContainer;
     if (options.api) {
       this.api = options.api instanceof OpenBlahApi ? options.api : new OpenBlahApi(options.api);
     }
@@ -257,8 +314,13 @@ export class OpenBlahClient {
       this.room = room;
       for (const e of ROOM_EVENTS) room.on(e, this.onRoomEvent);
       room.on(RoomEvent.DataReceived, this.onData);
+      room.on(RoomEvent.TrackSubscribed, this.onTrackSubscribed);
+      room.on(RoomEvent.TrackUnsubscribed, this.onTrackUnsubscribed);
+      room.on(RoomEvent.AudioPlaybackStatusChanged, this.onAudioPlayback);
       await room.connect(serverUrl, token);
       await room.localParticipant.setMicrophoneEnabled(true);
+      // Connect runs from the user's tap, so the browser normally lets audio start here.
+      await this.startAudio();
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
       this.teardown();
@@ -310,8 +372,23 @@ export class OpenBlahClient {
       userId: null,
       role: null,
       roomMetadata: null,
+      audioBlocked: false,
     });
     this.emit("disconnected", undefined);
+  }
+
+  /**
+   * Let the browser play the agent's audio. Call it from a tap when `audioBlocked` is true.
+   * Never throws; a no-op on React Native.
+   */
+  async startAudio(): Promise<void> {
+    const room = this.room as { startAudio?: () => Promise<void> } | null;
+    try {
+      await room?.startAudio?.();
+    } catch {
+      // Still blocked; `audioBlocked` stays true and the UI can ask for a tap.
+    }
+    this.onAudioPlayback();
   }
 
   /** Turn the microphone on or off. */
@@ -580,6 +657,12 @@ export class OpenBlahClient {
     if (!this.room) return;
     for (const e of ROOM_EVENTS) this.room.off(e, this.onRoomEvent);
     this.room.off(RoomEvent.DataReceived, this.onData);
+    this.room.off(RoomEvent.TrackSubscribed, this.onTrackSubscribed);
+    this.room.off(RoomEvent.TrackUnsubscribed, this.onTrackUnsubscribed);
+    this.room.off(RoomEvent.AudioPlaybackStatusChanged, this.onAudioPlayback);
+    // The listeners are gone before LiveKit unsubscribes, so remove the elements here.
+    for (const track of this.playing) for (const el of track.detach()) el.remove();
+    this.playing.clear();
     this.room = null;
   }
 
