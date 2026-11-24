@@ -417,6 +417,12 @@ Re-exports [useAgentControl](../web/react/functions/useAgentControl.md)
 
 ---
 
+### useAgentReady
+
+Re-exports [useAgentReady](../web/react/functions/useAgentReady.md)
+
+---
+
 ### useAgentState
 
 Re-exports [useAgentState](../web/react/functions/useAgentState.md)

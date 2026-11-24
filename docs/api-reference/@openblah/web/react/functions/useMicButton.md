@@ -59,6 +59,12 @@ True while a session runs or is starting: a tap now ends it (or is ignored while
 
 > **error**: `string` \| `null` = `room.error`
 
+### failed
+
+> **failed**: `boolean`
+
+True after starting failed or the agent did not join in time; a tap tries again.
+
 ### state
 
 > **state**: [`MicButtonState`](../type-aliases/MicButtonState.md)

@@ -2,6 +2,7 @@ import type { llm, stt, tts } from "@livekit/agents";
 import { describe, expect, it, vi } from "vitest";
 import {
   BARGE_IN_MIN_DURATION_MS,
+  buildColdStartLog,
   buildSessionOptions,
   buildTurnLatencyLog,
   configFromEnv,
@@ -11,6 +12,8 @@ import {
   geminiThinkingConfig,
   detectLanguage,
   directInstructions,
+  holdInstance,
+  timeTools,
   turnHandling,
   type ProviderSet,
   type SpokenLanguage,
@@ -139,5 +142,71 @@ describe("turn latency log", () => {
     });
     expect(log.endOfSpeechToFirstAudioMs).toBeNull();
     expect(log.interrupted).toBe(true);
+  });
+});
+
+describe("tool timing and cold start logs", () => {
+  it("logs each tool call with its duration and keeps the result", async () => {
+    const lines: object[] = [];
+    let t = 0;
+    const tools = { lookup: { execute: async (x: number) => x * 2 } };
+    timeTools(
+      tools,
+      "rm_1",
+      (l) => lines.push(l),
+      () => (t += 150),
+    );
+    expect(await tools.lookup.execute(2)).toBe(4);
+    expect(lines[0]).toMatchObject({
+      event: "tool_call",
+      tool: "lookup",
+      durationMs: 150,
+      ok: true,
+    });
+  });
+  it("logs a failing tool call and rethrows", async () => {
+    const lines: object[] = [];
+    const tools = {
+      boom: {
+        execute: async () => {
+          throw new Error("x");
+        },
+      },
+    };
+    timeTools(tools, undefined, (l) => lines.push(l));
+    await expect(tools.boom.execute()).rejects.toThrow("x");
+    expect(lines[0]).toMatchObject({ tool: "boom", ok: false });
+  });
+  it("cold start log says whether it was the first job", () => {
+    const a = buildColdStartLog({ entryAt: 100, readyAt: 1600, uptimeSeconds: 12 });
+    expect(a).toMatchObject({
+      event: "cold_start",
+      sessionReadyMs: 1500,
+      processUptimeMs: 12000,
+      firstJob: true,
+    });
+    expect(buildColdStartLog({ entryAt: 0, readyAt: 10 }).firstJob).toBe(false);
+  });
+});
+
+describe("holdInstance", () => {
+  it("does nothing without a URL and holds then releases with one", async () => {
+    holdInstance({ url: undefined })();
+    const urls: string[] = [];
+    let abort: AbortSignal | undefined;
+    const fetchImpl = (async (u: string, init: RequestInit) => {
+      urls.push(u);
+      abort = init.signal as AbortSignal;
+      return new Promise(() => {});
+    }) as unknown as typeof fetch;
+    const release = holdInstance({
+      url: "https://w.run.app/",
+      fetchImpl,
+      getToken: async () => "tok",
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(urls).toEqual(["https://w.run.app/hold"]);
+    release();
+    expect(abort?.aborted).toBe(true);
   });
 });

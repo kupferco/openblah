@@ -105,6 +105,8 @@ export interface OpenBlahLabels {
   micListening: string;
   micThinking: string;
   micSpeaking: string;
+  /** Shown under the mic button when voice could not start or the agent did not join. A tap retries. */
+  micFailed: string;
 }
 
 /** The English labels. @public */
@@ -147,6 +149,7 @@ export const defaultLabels: OpenBlahLabels = {
   micListening: "Listening. Tap to end",
   micThinking: "Thinking. Tap to end",
   micSpeaking: "Speaking. Tap to end",
+  micFailed: "Voice could not start. Tap to try again.",
 };
 
 /** Fill the gaps of partial labels with {@link defaultLabels}. @public */

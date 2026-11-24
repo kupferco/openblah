@@ -6,7 +6,17 @@ import { OpenBlahProvider, useMicButton } from "./react.js";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-function setup() {
+function setup(opts: { agent?: boolean; timeoutMs?: number; onError?: () => void } = {}) {
+  const agent = {
+    identity: "agent",
+    name: "Blah",
+    isLocal: false,
+    isAgent: true,
+    isSpeaking: false,
+    isMicrophoneEnabled: true,
+    attributes: { "lk.agent.state": "listening" } as Record<string, string>,
+  };
+  const handlers = new Map<string, Set<(...a: unknown[]) => void>>();
   const room = {
     state: "connected",
     localParticipant: {
@@ -18,10 +28,13 @@ function setup() {
       isMicrophoneEnabled: false,
       setMicrophoneEnabled: vi.fn(async () => {}),
     },
-    remoteParticipants: new Map(),
+    remoteParticipants: new Map<string, unknown>(opts.agent === false ? [] : [["agent", agent]]),
     connect: vi.fn(async () => {}),
     disconnect: vi.fn(async () => {}),
-    on: vi.fn(() => room),
+    on: vi.fn((e: string, h: (...a: unknown[]) => void) => {
+      (handlers.get(e) ?? handlers.set(e, new Set()).get(e)!).add(h);
+      return room;
+    }),
     off: vi.fn(),
   };
   const createRoom = vi.fn(() => room as unknown as RoomLike);
@@ -29,13 +42,14 @@ function setup() {
   const start = vi.fn(async () => ({ serverUrl: "wss://x", token: "t" }));
   const apis: ReturnType<typeof useMicButton>[] = [];
   const Probe = () => {
-    apis.push(useMicButton({ start }));
+    apis.push(useMicButton({ start, agentTimeoutMs: opts.timeoutMs, onError: opts.onError }));
     return null;
   };
   act(() => {
     create(createElement(OpenBlahProvider, { client }, createElement(Probe), createElement(Probe)));
   });
-  return { apis, start, room, createRoom };
+  const emit = (e: string, ...a: unknown[]) => handlers.get(e)?.forEach((h) => h(...a));
+  return { apis, start, room, createRoom, agent, emit };
 }
 
 describe("useMicButton", () => {
@@ -68,5 +82,39 @@ describe("useMicButton", () => {
     await act(async () => api.toggle());
     expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: "nope" }));
     expect(api.state).toBe("idle");
+  });
+
+  it("shows connecting until the agent has joined, then listening", async () => {
+    const s = setup({ agent: false });
+    const last = () => s.apis[s.apis.length - 1]!;
+    await act(async () => last().toggle());
+    expect(last().state).toBe("connecting");
+    s.room.remoteParticipants.set("agent", {
+      ...s.agent,
+      attributes: { "lk.agent.state": "initializing" },
+    });
+    await act(async () => s.emit("participantConnected"));
+    expect(last().state).toBe("connecting");
+    s.room.remoteParticipants.set("agent", s.agent);
+    await act(async () => s.emit("participantAttributesChanged"));
+    expect(last().state).toBe("listening");
+  });
+
+  it("fails with a retryable state when the agent never joins", async () => {
+    vi.useFakeTimers();
+    try {
+      const onError = vi.fn();
+      const s = setup({ agent: false, timeoutMs: 1000, onError });
+      const last = () => s.apis[s.apis.length - 1]!;
+      await act(async () => last().toggle());
+      expect(last().state).toBe("connecting");
+      await act(async () => {
+        vi.advanceTimersByTime(1100);
+      });
+      expect(s.room.disconnect).toHaveBeenCalled();
+      expect(onError).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

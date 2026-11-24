@@ -10,7 +10,8 @@ import {
 } from "@livekit/agents";
 import { RoomEvent, ParticipantKind } from "@livekit/rtc-node";
 import { configFromEnv } from "./config.js";
-import { writeLog } from "./latency.js";
+import { holdInstance } from "./keepalive.js";
+import { buildColdStartLog, timeTools, writeLog } from "./latency.js";
 import {
   attachLatencyLogging,
   buildSessionOptions,
@@ -57,6 +58,7 @@ export default defineAgent({
     proc.userData.models = await loadModels();
   },
   entry: async (ctx: JobContext) => {
+    const entryAt = performance.now();
     const env = configFromEnv();
     const models = ctx.proc.userData.models as Models;
     await ctx.connect();
@@ -132,18 +134,21 @@ export default defineAgent({
     const directAgent: DirectAgent = new DirectAgent(
       cfg,
       providers.tts,
-      {
-        ...control.tools(),
-        ...mcp?.tools,
-        ...(settings
-          ? settingsTools({
-              roomId: ctx.room.name ?? "",
-              connection: settings,
-              currentSpeaker: () => [...ctx.room.remoteParticipants.values()][0]?.identity,
-              turn: () => directAgent.turn,
-            })
-          : {}),
-      },
+      timeTools(
+        {
+          ...control.tools(),
+          ...mcp?.tools,
+          ...(settings
+            ? settingsTools({
+                roomId: ctx.room.name ?? "",
+                connection: settings,
+                currentSpeaker: () => [...ctx.room.remoteParticipants.values()][0]?.identity,
+                turn: () => directAgent.turn,
+              })
+            : {}),
+        },
+        ctx.room.name,
+      ),
       settings ? SETTINGS_INSTRUCTIONS : undefined,
     );
     const options = buildSessionOptions(providers, models.vad, createTurnDetector());
@@ -186,7 +191,11 @@ export default defineAgent({
         await reportUsageLog(ctx.room.name ?? "", collector.take()).catch(() => {});
       });
     }
+    // Keep Cloud Run from scaling this instance down while the call is running.
+    const release = holdInstance({ url: process.env.WORKER_SELF_URL, roomId: ctx.room.name });
+    ctx.addShutdownCallback(async () => release());
     writeLog({ event: "agent_joined", roomId: ctx.room.name });
+    writeLog(buildColdStartLog({ roomId: ctx.room.name, entryAt, readyAt: performance.now() }));
 
     const local = ctx.room.localParticipant;
     let lastSpeech: { waitForPlayout(): Promise<void> } | undefined;
@@ -270,6 +279,13 @@ if (process.argv[1] === import.meta.filename) {
           res.writeHead(503, { "content-type": "text/plain" });
           res.end("starting");
         });
+        return;
+      }
+      if (req.url === "/hold") {
+        // An open request tells Cloud Run this instance is busy (see keepalive.ts).
+        res.writeHead(200, { "content-type": "text/plain" });
+        const beat = setInterval(() => res.write("."), 30_000);
+        res.on("close", () => clearInterval(beat));
         return;
       }
       res.writeHead(200, { "content-type": "text/plain" });

@@ -1,4 +1,5 @@
-# Deploys the server and the agent worker to Cloud Run (min instances 0, max instances 1 by default).
+# Deploys the server and the agent worker to Cloud Run (min instances 0, max instances 1 by default;
+# the worker has CPU always allocated and its minimum is the repo variable AGENT_MIN_INSTANCES).
 # Every push to main deploys prod. By hand (Run workflow) you can pick staging or prod;
 # prod only from main. Raise the cap with the repo variable MAX_INSTANCES.
 name: Deploy
@@ -23,6 +24,9 @@ concurrency:
 env:
   TARGET: ${{ github.event.inputs.env || 'prod' }}
   MAX_INSTANCES: ${{ vars.MAX_INSTANCES || '1' }}
+  # Agent worker minimum. 0 scales to zero when idle; set the repo variable AGENT_MIN_INSTANCES to 1
+  # to keep one instance always warm (no cold start, about 24/7 cost of 2 vCPU + 2 GiB).
+  AGENT_MIN_INSTANCES: ${{ vars.AGENT_MIN_INSTANCES || '0' }}
   REGION: ${{ vars.GCP_REGION || 'europe-west1' }}
 
 jobs:
@@ -84,15 +88,19 @@ jobs:
           echo "extra=$extra" >> "$GITHUB_OUTPUT"
 
       # Worker first, so the server can be pointed at its URL.
-      # CPU always allocated and a 60 min timeout: the worker holds a WebSocket to LiveKit
-      # for the whole call; with throttled CPU between requests it would stall.
-      # max-instances caps cost.
+      # CPU always allocated (--no-cpu-throttling) and a 60 min timeout: the worker holds a WebSocket
+      # to LiveKit for the whole call; with throttled CPU between requests it would stall (turn
+      # detection, VAD and streaming STT/LLM/TTS all run outside any HTTP request).
+      # A call is not an HTTP request, so the worker opens one long request to its own /hold route
+      # for each running call (WORKER_SELF_URL, see packages/agent/src/keepalive.ts); Cloud Run does
+      # not scale down an instance with a request in flight. Cloud Run gives a stopping instance
+      # only 10 s after SIGTERM, which is why the hold matters. max-instances caps cost.
       - name: Deploy agent worker
         id: worker
         run: |
           gcloud run deploy "openblah-agent-$TARGET" \
             --image "${{ steps.build.outputs.repo }}/agent:$GITHUB_SHA" --region "$REGION" \
-            --min-instances 0 --max-instances "$MAX_INSTANCES" --no-cpu-throttling --cpu 2 --memory 2Gi \
+            --min-instances "$AGENT_MIN_INSTANCES" --max-instances "$MAX_INSTANCES" --no-cpu-throttling --cpu 2 --memory 2Gi \
             --timeout 3600 --no-allow-unauthenticated \
             --set-env-vars "OPENBLAH_ENV=$TARGET" \
             --set-secrets "LIVEKIT_URL=LIVEKIT_URL:latest,LIVEKIT_API_KEY=LIVEKIT_API_KEY:latest,LIVEKIT_API_SECRET=LIVEKIT_API_SECRET:latest,DEEPGRAM_API_KEY=DEEPGRAM_API_KEY:latest,CARTESIA_API_KEY=CARTESIA_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest${{ steps.opt.outputs.extra }}"
@@ -116,7 +124,11 @@ jobs:
       - name: Point worker at server
         run: |
           gcloud run services update "openblah-agent-$TARGET" --region "$REGION" \
-            --update-env-vars "OPENBLAH_SERVER_URL=${{ steps.server.outputs.url }}" --quiet
+            --update-env-vars "OPENBLAH_SERVER_URL=${{ steps.server.outputs.url }},WORKER_SELF_URL=${{ steps.worker.outputs.url }}" --quiet
+          # The worker calls its own /hold route while a call runs (keeps the instance from scaling down).
+          WSA=$(gcloud run services describe "openblah-agent-$TARGET" --region "$REGION" --format='value(spec.template.spec.serviceAccountName)')
+          gcloud run services add-iam-policy-binding "openblah-agent-$TARGET" --region "$REGION" \
+            --member "serviceAccount:$WSA" --role roles/run.invoker --quiet
 
       - name: Smoke test warm-up
         run: |

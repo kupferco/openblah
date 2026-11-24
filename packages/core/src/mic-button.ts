@@ -1,6 +1,11 @@
-import { useRef, type ReactNode } from "react";
-import { useAgentState, useClientHandle, useRoom, useToolApprovals } from "./react.js";
-import type { AgentState } from "./client.js";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useAgentReady,
+  useAgentState,
+  useClientHandle,
+  useRoom,
+  useToolApprovals,
+} from "./react.js";
 import type { OpenBlahLabels, OpenBlahTheme } from "./room-view.js";
 
 /** What the mic button shows. `idle` is a plain mic; the other four are the live states. @public */
@@ -20,7 +25,15 @@ export interface UseMicButtonOptions {
   onError?: (error: Error) => void;
   /** Called after the user ended the session with a tap. */
   onEnd?: () => void;
+  /**
+   * How long to wait for the agent to join after the room connects, in ms. Default 20000. When it
+   * does not join in time the session is ended, `failed` is set and the next tap tries again.
+   */
+  agentTimeoutMs?: number;
 }
+
+/** Default wait for the agent to join the room, in ms. @public */
+export const MIC_AGENT_TIMEOUT_MS = 20_000;
 
 /**
  * State and the tap handler behind the mic button, for building your own. The session lives on
@@ -29,21 +42,44 @@ export interface UseMicButtonOptions {
  */
 export function useMicButton(options: UseMicButtonOptions) {
   const room = useRoom();
-  const agent: AgentState = useAgentState();
+  const agentHere = useAgentReady();
+  const agentState = useAgentState();
   const approvals = useToolApprovals();
   const opts = useRef(options);
   opts.current = options;
   const client = useClientHandle();
 
-  const active = room.status === "connected";
-  const connecting = room.status === "connecting";
+  const [failed, setFailed] = useState(false);
+  const [agentSeen, setAgentSeen] = useState(false);
+  const roomUp = room.status === "connected";
+  // The agent has really joined once its session is up; until then the button is the loader.
+  useEffect(() => {
+    if (!roomUp) setAgentSeen(false);
+    else if (agentHere) setAgentSeen(true);
+  }, [roomUp, agentHere]);
+  const waitingForAgent = roomUp && !agentSeen && !agentHere;
+  useEffect(() => {
+    if (!waitingForAgent) return;
+    const timer = setTimeout(() => {
+      setFailed(true);
+      opts.current.onError?.(new Error("The voice assistant did not join in time."));
+      void room.disconnect();
+    }, opts.current.agentTimeoutMs ?? MIC_AGENT_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [waitingForAgent, room]);
+  useEffect(() => {
+    if (roomUp && agentHere) setFailed(false);
+  }, [roomUp, agentHere]);
+
+  const active = roomUp;
+  const connecting = room.status === "connecting" || waitingForAgent;
   const state: MicButtonState = connecting
     ? "connecting"
     : !active
       ? "idle"
-      : agent === "thinking"
+      : agentState === "thinking"
         ? "thinking"
-        : agent === "speaking"
+        : agentState === "speaking"
           ? "speaking"
           : "listening";
 
@@ -53,9 +89,11 @@ export function useMicButton(options: UseMicButtonOptions) {
       opts.current.onEnd?.();
       return;
     }
+    setFailed(false);
     try {
       await client.startOnce(() => opts.current.start());
     } catch (e) {
+      setFailed(true);
       opts.current.onError?.(e instanceof Error ? e : new Error(String(e)));
     }
   };
@@ -65,6 +103,8 @@ export function useMicButton(options: UseMicButtonOptions) {
     /** True while a session runs or is starting: a tap now ends it (or is ignored while starting). */
     active: active || connecting,
     error: room.error,
+    /** True after starting failed or the agent did not join in time; a tap tries again. */
+    failed: failed && !active && !connecting,
     toggle,
     approvals,
   };
@@ -82,7 +122,7 @@ export interface MicConfirmation {
 export interface OpenBlahMicButtonBaseProps extends UseMicButtonOptions {
   /** Partial theme: `accent` and `accentText` colour the button, `danger` the live outline, `radius` is ignored (it is round). */
   theme?: Partial<OpenBlahTheme>;
-  /** Partial labels (`micStart`, `micEnd`, `micConnecting`, `micListening`, `micThinking`, `micSpeaking`, `confirmYes`, `confirmNo`). */
+  /** Partial labels (`micStart`, `micEnd`, `micConnecting`, `micListening`, `micThinking`, `micSpeaking`, `micFailed`, `confirmYes`, `confirmNo`). */
   labels?: Partial<OpenBlahLabels>;
   /** Button diameter in pixels. Default 56. */
   size?: number;

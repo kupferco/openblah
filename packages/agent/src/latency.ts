@@ -55,3 +55,85 @@ export function buildTurnLatencyLog(args: {
 export function writeLog(entry: object, out: (line: string) => void = console.log): void {
   out(JSON.stringify(entry));
 }
+
+/** Logged once when a job starts: how long the worker took from process start to ready for this call. */
+export interface ColdStartLog {
+  event: "cold_start";
+  roomId?: string;
+  /** Process start to the job being picked up. Large on a cold instance, near the job's own time when warm. */
+  processUptimeMs: number;
+  /** Job entry to the agent session running (models, keys, tools, room join). */
+  sessionReadyMs: number;
+  /** True when this was the first job this process has run: the instance was cold. */
+  firstJob: boolean;
+  ts: string;
+}
+
+let jobsStarted = 0;
+
+export function buildColdStartLog(args: {
+  roomId?: string;
+  entryAt: number;
+  readyAt: number;
+  uptimeSeconds?: number;
+  now?: Date;
+}): ColdStartLog {
+  jobsStarted += 1;
+  return {
+    event: "cold_start",
+    ...(args.roomId ? { roomId: args.roomId } : {}),
+    processUptimeMs: Math.round((args.uptimeSeconds ?? process.uptime()) * 1000),
+    sessionReadyMs: Math.max(0, Math.round(args.readyAt - args.entryAt)),
+    firstJob: jobsStarted === 1,
+    ts: (args.now ?? new Date()).toISOString(),
+  };
+}
+
+/** One tool call and how long it took. */
+export interface ToolCallLog {
+  event: "tool_call";
+  roomId?: string;
+  tool: string;
+  durationMs: number;
+  ok: boolean;
+  ts: string;
+}
+
+type Executable = { execute?: (...args: never[]) => unknown };
+
+/**
+ * Time every tool call in the structured log. Wraps `execute` in place, so the tools keep their
+ * identity (LiveKit brands them). Only the name and duration are logged, never arguments or results.
+ */
+export function timeTools<T extends Record<string, unknown>>(
+  tools: T,
+  roomId?: string,
+  log: (entry: object) => void = writeLog,
+  clock: () => number = () => performance.now(),
+): T {
+  for (const [name, tool] of Object.entries(tools)) {
+    const t = tool as Executable;
+    const original = t.execute;
+    if (typeof original !== "function") continue;
+    t.execute = (async (...args: never[]) => {
+      const start = clock();
+      let ok = true;
+      try {
+        return await original.apply(tool, args);
+      } catch (err) {
+        ok = false;
+        throw err;
+      } finally {
+        log({
+          event: "tool_call",
+          ...(roomId ? { roomId } : {}),
+          tool: name,
+          durationMs: Math.round(clock() - start),
+          ok,
+          ts: new Date().toISOString(),
+        } satisfies ToolCallLog);
+      }
+    }) as never;
+  }
+  return tools;
+}

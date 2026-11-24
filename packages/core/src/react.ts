@@ -76,6 +76,11 @@ export function useAgentState(): AgentState {
   return useSnapshot(useClient()).agentState;
 }
 
+/** True once the agent has joined and is ready to listen (false before, and in rooms without one). */
+export function useAgentReady(): boolean {
+  return useSnapshot(useClient()).agentReady;
+}
+
 /**
  * Write actions the agent is waiting on (book, send, pay). Show `pending` as a
  * confirmation card; `approve` / `decline` answer it. Only the owner of the

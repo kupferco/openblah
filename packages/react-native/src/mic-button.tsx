@@ -1,5 +1,13 @@
 import { useEffect, useRef } from "react";
-import { Animated, Pressable, Text, View, type StyleProp, type ViewStyle } from "react-native";
+import {
+  ActivityIndicator,
+  Animated,
+  Pressable,
+  Text,
+  View,
+  type StyleProp,
+  type ViewStyle,
+} from "react-native";
 import {
   micHaloColor,
   micLabel,
@@ -45,6 +53,17 @@ export function OpenBlahMicButton(props: OpenBlahMicButtonProps) {
     loop.start();
     return () => loop.stop();
   }, [live, m.state, pulse]);
+
+  // The mic fades into a spinner while connecting, then back.
+  const fade = useRef(new Animated.Value(1)).current;
+  const connecting = m.state === "connecting";
+  useEffect(() => {
+    Animated.timing(fade, {
+      toValue: connecting ? 0 : 1,
+      duration: 250,
+      useNativeDriver: true,
+    }).start();
+  }, [connecting, fade]);
 
   const ring = size + 12;
   return (
@@ -99,11 +118,18 @@ export function OpenBlahMicButton(props: OpenBlahMicButtonProps) {
           backgroundColor: t.accent,
           alignItems: "center",
           justifyContent: "center",
-          opacity: m.state === "connecting" ? 0.6 : 1,
         }}
       >
         {/* A mic drawn from views, so no icon library is needed. */}
-        <View style={{ alignItems: "center" }}>
+        <Animated.View
+          style={{
+            position: "absolute",
+            opacity: fade.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
+          }}
+        >
+          <ActivityIndicator color={t.accentText} />
+        </Animated.View>
+        <Animated.View style={{ alignItems: "center", opacity: fade }}>
           <View
             style={{
               width: size * 0.2,
@@ -125,8 +151,23 @@ export function OpenBlahMicButton(props: OpenBlahMicButtonProps) {
             }}
           />
           <View style={{ width: 2, height: size * 0.07, backgroundColor: t.accentText }} />
-        </View>
+        </Animated.View>
       </Pressable>
+      {m.failed && (
+        <Text
+          accessibilityRole="alert"
+          style={{
+            position: "absolute",
+            top: ring + 4,
+            width: 220,
+            textAlign: "center",
+            color: t.danger,
+            fontSize: t.fontSize * 0.8125,
+          }}
+        >
+          {l.micFailed}
+        </Text>
+      )}
       {pending &&
         (props.renderConfirmation ? (
           props.renderConfirmation({
