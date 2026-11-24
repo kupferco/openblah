@@ -1,6 +1,7 @@
 export * from "./config.js";
 export * from "./language.js";
 export * from "./latency.js";
+export * from "./keepalive.js";
 export {
   attachLatencyLogging,
   BARGE_IN_MIN_DURATION_MS,

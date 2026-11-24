@@ -146,6 +146,14 @@ Shown when the product does not pay for voice and the user needs their own key.
 
 ---
 
+### micFailed
+
+> **micFailed**: `string`
+
+Shown under the mic button when voice could not start or the agent did not join. A tap retries.
+
+---
+
 ### micListening
 
 > **micListening**: `string`

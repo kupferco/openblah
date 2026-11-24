@@ -43,6 +43,7 @@ React hooks and the `<OpenBlahRoom />` component of `@openblah/web`. Import from
 - [resolveTheme](functions/resolveTheme.md)
 - [useAddKeySheet](functions/useAddKeySheet.md)
 - [useAgentControl](functions/useAgentControl.md)
+- [useAgentReady](functions/useAgentReady.md)
 - [useAgentState](functions/useAgentState.md)
 - [useAiPause](functions/useAiPause.md)
 - [useCall](functions/useCall.md)

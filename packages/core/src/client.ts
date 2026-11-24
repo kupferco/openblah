@@ -81,6 +81,8 @@ export interface ClientSnapshot {
   muted: boolean;
   /** The agent's state, or `unavailable` when no agent is in the room. */
   agentState: AgentState;
+  /** True once the agent has joined the room and its session is up, so it can listen. */
+  agentReady: boolean;
   /** Write actions waiting for confirmation. Empty unless you own the tool credentials. */
   approvals: ToolApproval[];
   /** True while the AI is paused: it listens to nobody. Show this to everyone. */
@@ -122,6 +124,16 @@ export interface ClientEvents {
 
 /** Attribute the LiveKit agent publishes its state under. @internal */
 export const AGENT_STATE_ATTRIBUTE = "lk.agent.state";
+
+/**
+ * True when the agent participant is in the room and its voice session has started. LiveKit
+ * publishes `initializing` until then (or nothing at all, for a moment after it joins).
+ * @internal
+ */
+export function isAgentReady(agent: { attributes: Record<string, string> } | undefined): boolean {
+  const state = agent?.attributes[AGENT_STATE_ATTRIBUTE];
+  return !!agent && !!state && state !== "initializing";
+}
 
 /**
  * Derive the agent state from the agent participant's attributes.
@@ -233,6 +245,7 @@ export class OpenBlahClient {
     participants: [],
     muted: true,
     agentState: "unavailable",
+    agentReady: false,
     approvals: [],
     aiPaused: false,
     mode: "listening",
@@ -365,6 +378,7 @@ export class OpenBlahClient {
       participants: [],
       muted: true,
       agentState: "unavailable",
+      agentReady: false,
       approvals: [],
       aiPaused: false,
       mode: "listening",
@@ -688,6 +702,7 @@ export class OpenBlahClient {
       participants,
       muted,
       agentState: deriveAgentState(agent, muted),
+      agentReady: isAgentReady(agent),
       aiPaused: agent?.attributes[AI_PAUSED_ATTRIBUTE] === "true",
       mode: modeFromAttribute(agent?.attributes[MODE_ATTRIBUTE]),
       roomId: room.name,

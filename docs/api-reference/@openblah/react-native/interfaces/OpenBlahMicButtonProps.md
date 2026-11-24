@@ -8,6 +8,19 @@ Props of the React Native `<OpenBlahMicButton />`.
 
 ## Properties
 
+### agentTimeoutMs?
+
+> `optional` **agentTimeoutMs?**: `number`
+
+How long to wait for the agent to join after the room connects, in ms. Default 20000. When it
+does not join in time the session is ended, `failed` is set and the next tap tries again.
+
+#### Inherited from
+
+[`OpenBlahMicButtonBaseProps`](../../web/react/interfaces/OpenBlahMicButtonBaseProps.md).[`agentTimeoutMs`](../../web/react/interfaces/OpenBlahMicButtonBaseProps.md#agenttimeoutms)
+
+---
+
 ### haloColors?
 
 > `optional` **haloColors?**: `Partial`\<`Record`\<`"listening"` \| `"thinking"` \| `"speaking"`, `string`\>\>
@@ -36,7 +49,7 @@ Hide the built-in compact confirmation card (answer approvals yourself with `use
 
 > `optional` **labels?**: `Partial`\<[`OpenBlahLabels`](../../web/react/interfaces/OpenBlahLabels.md)\>
 
-Partial labels (`micStart`, `micEnd`, `micConnecting`, `micListening`, `micThinking`, `micSpeaking`, `confirmYes`, `confirmNo`).
+Partial labels (`micStart`, `micEnd`, `micConnecting`, `micListening`, `micThinking`, `micSpeaking`, `micFailed`, `confirmYes`, `confirmNo`).
 
 #### Inherited from
 

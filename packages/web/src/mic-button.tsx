@@ -41,7 +41,7 @@ export function OpenBlahMicButton(props: OpenBlahMicButtonProps) {
       data-state={m.state}
       style={{ position: "relative", display: "inline-flex", ...props.style }}
     >
-      <style>{`@keyframes openblah-mic-halo{0%,100%{box-shadow:0 0 0 2px var(--ob-halo),0 0 0 4px transparent}50%{box-shadow:0 0 0 2px var(--ob-halo),0 0 0 7px color-mix(in srgb,var(--ob-halo) 35%,transparent)}}@media (prefers-reduced-motion:reduce){[data-openblah-mic] button{animation:none!important}}`}</style>
+      <style>{`@keyframes openblah-mic-halo{0%,100%{box-shadow:0 0 0 2px var(--ob-halo),0 0 0 4px transparent}50%{box-shadow:0 0 0 2px var(--ob-halo),0 0 0 7px color-mix(in srgb,var(--ob-halo) 35%,transparent)}}@keyframes openblah-mic-spin{to{transform:rotate(360deg)}}[data-openblah-mic] .ob-icon{transition:opacity .25s ease;position:absolute}@media (prefers-reduced-motion:reduce){[data-openblah-mic] .ob-icon{transition:none}[data-openblah-mic] .ob-spin{animation:none!important}}@media (prefers-reduced-motion:reduce){[data-openblah-mic] button{animation:none!important}}`}</style>
       <button
         type="button"
         aria-label={label}
@@ -66,20 +66,59 @@ export function OpenBlahMicButton(props: OpenBlahMicButtonProps) {
             animation: pulse
               ? `openblah-mic-halo ${m.state === "speaking" ? 0.9 : m.state === "thinking" ? 1.6 : 2.4}s ease-in-out infinite`
               : undefined,
-            opacity: m.state === "connecting" ? 0.6 : 1,
           } as CSSProperties
         }
       >
+        {/* The mic fades into a spinner while connecting, then back to the live mic. */}
         <svg
+          className="ob-icon"
           width={size * 0.5}
           height={size * 0.5}
           viewBox="0 0 24 24"
           fill="currentColor"
           aria-hidden
+          style={{ opacity: m.state === "connecting" ? 0 : 1 }}
         >
           <path d={MIC_PATH} />
         </svg>
+        <svg
+          className="ob-icon ob-spin"
+          width={size * 0.5}
+          height={size * 0.5}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={3}
+          strokeLinecap="round"
+          aria-hidden
+          data-openblah-spinner=""
+          style={{
+            opacity: m.state === "connecting" ? 1 : 0,
+            animation:
+              m.state === "connecting" ? "openblah-mic-spin .8s linear infinite" : undefined,
+          }}
+        >
+          <path d="M12 3a9 9 0 1 0 9 9" />
+        </svg>
       </button>
+      {m.failed && (
+        <span
+          role="alert"
+          style={{
+            position: "absolute",
+            top: size + t.spacing / 2,
+            left: "50%",
+            transform: "translateX(-50%)",
+            width: "max-content",
+            maxWidth: 220,
+            fontSize: t.fontSize * 0.8125,
+            color: t.danger,
+            textAlign: "center",
+          }}
+        >
+          {l.micFailed}
+        </span>
+      )}
       {pending &&
         (props.renderConfirmation ? (
           props.renderConfirmation({

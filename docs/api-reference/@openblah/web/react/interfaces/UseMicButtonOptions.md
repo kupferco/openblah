@@ -8,6 +8,15 @@ Options of [useMicButton](../functions/useMicButton.md) and the `<OpenBlahMicBut
 
 ## Properties
 
+### agentTimeoutMs?
+
+> `optional` **agentTimeoutMs?**: `number`
+
+How long to wait for the agent to join after the room connects, in ms. Default 20000. When it
+does not join in time the session is ended, `failed` is set and the next tap tries again.
+
+---
+
 ### onEnd?
 
 > `optional` **onEnd?**: () => `void`

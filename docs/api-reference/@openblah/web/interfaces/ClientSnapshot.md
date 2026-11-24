@@ -4,6 +4,14 @@ Everything a UI needs, as one immutable snapshot.
 
 ## Properties
 
+### agentReady
+
+> **agentReady**: `boolean`
+
+True once the agent has joined the room and its session is up, so it can listen.
+
+---
+
 ### agentState
 
 > **agentState**: [`AgentState`](../type-aliases/AgentState.md)
