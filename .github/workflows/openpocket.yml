@@ -101,6 +101,18 @@ jobs:
         with:
           node-version: 22
 
+      # Dependency caches, keyed on lockfiles, so a round does not download everything again.
+      # A miss only costs the download; nothing is skipped.
+      - name: Cache npm and pip downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.npm
+            ~/.cache/pip
+          key: openpocket-deps-${{ runner.os }}-${{ hashFiles('**/package-lock.json', '**/requirements*.txt', '**/pyproject.toml') }}
+          restore-keys: |
+            openpocket-deps-${{ runner.os }}-
+
       - name: Note the start
         run: echo "OP_START=$(date +%s)" >> "$GITHUB_ENV"
 
