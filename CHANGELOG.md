@@ -2,6 +2,12 @@
 
 All notable changes to the published packages (`@openblah/core`, `@openblah/web`, `@openblah/react-native`, `@openblah/server`). The SDK packages share one version. OpenBlah is **0.x: the API may change in any minor release.**
 
+## 0.2.2
+
+SDK packages (`core`, `web`, `react-native`) 0.2.2. `@openblah/server` is unchanged (0.1.1).
+
+- The mic button shows a connecting spinner until the agent is ready to talk.
+
 ## 0.2.1
 
 SDK packages (`core`, `web`, `react-native`) 0.2.1.

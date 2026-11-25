@@ -1,4 +1,6 @@
-# Publishes the 0.x packages to npm. Run by hand (Actions > Release) or push a tag like v0.1.0.
+# Publishes the 0.x packages to npm. Runs by itself when a merge to main changes a
+# package version (versions already on npm are skipped, then the commit is tagged),
+# or by hand (Actions > Release), or when a tag like v0.1.0 is pushed.
 # Needs the repo secret NPM_TOKEN (an automation token for the @openblah scope).
 name: Release
 on:
@@ -10,9 +12,11 @@ on:
         default: false
   push:
     tags: ["v*"]
+    branches: [main]
+    paths: ["packages/*/package.json"]
 
 permissions:
-  contents: read
+  contents: write # tag the release commit
   id-token: write # npm provenance
 
 concurrency:
@@ -50,9 +54,29 @@ jobs:
       - name: Dry run
         if: github.event.inputs.dry-run == 'true'
         run: pnpm --filter "@openblah/core" --filter "@openblah/web" --filter "@openblah/react-native" --filter "@openblah/server" publish --dry-run --no-git-checks
-      - name: Publish
+      - name: Publish (skips versions already on npm)
         if: github.event.inputs.dry-run != 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: "true"
-        run: pnpm --filter "@openblah/core" --filter "@openblah/web" --filter "@openblah/react-native" --filter "@openblah/server" publish --access public --no-git-checks
+        run: |
+          for dir in core web react-native server; do
+            name=$(node -p "require('./packages/$dir/package.json').name")
+            version=$(node -p "require('./packages/$dir/package.json').version")
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "$name@$version is already on npm, skipping"
+            else
+              echo "Publishing $name@$version"
+              pnpm --filter "$name" publish --access public --no-git-checks
+            fi
+          done
+      - name: Tag the release
+        if: github.event.inputs.dry-run != 'true' && !startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="v$(node -p "require('./packages/web/package.json').version")"
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "$tag already exists, not tagging"
+          else
+            git tag "$tag"
+            git push origin "$tag"
+          fi
