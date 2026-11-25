@@ -1,6 +1,6 @@
 {
   "name": "@openblah/core",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "license": "MIT",
   "description": "Shared client and React hooks behind @openblah/web and @openblah/react-native (0.x, unstable). Use those packages, not this one.",
   "publishConfig": {

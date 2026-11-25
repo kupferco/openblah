@@ -1,5 +1,11 @@
 # @openblah/react-native
 
+## 0.2.2
+
+### Patch Changes
+
+- The mic button shows a connecting spinner until the agent is ready to talk.
+
 ## 0.2.1
 
 ### Patch Changes
