@@ -57,6 +57,8 @@ export function parseControlMessage(payload: Uint8Array | string): ControlMessag
 export const phrases = {
   entry: (agent: string, lang: SpokenLanguage) =>
     lang === "pt" ? `${agent} está aqui e está ouvindo.` : `${agent} is here and listening.`,
+  back: (lang: SpokenLanguage) =>
+    lang === "pt" ? "Desculpe, perdi você por um instante." : "Sorry, I lost you for a moment.",
   joined: (agent: string, person: string, paused: boolean, lang: SpokenLanguage) => {
     if (lang === "pt") {
       return paused
@@ -132,6 +134,14 @@ export class RoomControl {
   /** Say that the agent is here and listening. Call once the session is running. */
   announceEntry(): void {
     this.port?.say(phrases.entry(this.opts.agentName, this.lang()));
+  }
+
+  /**
+   * The agent restarted in a conversation that was already going: no greeting, just one short
+   * apology so the person knows it is back.
+   */
+  announceResume(): void {
+    this.port?.say(phrases.back(this.lang()));
   }
 
   /** Someone joined after the agent: say so again, so they know it is listening. */

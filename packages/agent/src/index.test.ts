@@ -1,5 +1,6 @@
 import type { llm, stt, tts } from "@livekit/agents";
 import { describe, expect, it, vi } from "vitest";
+import { fetchRoomKeys } from "./keys.js";
 import {
   BARGE_IN_MIN_DURATION_MS,
   buildColdStartLog,
@@ -13,6 +14,7 @@ import {
   detectLanguage,
   directInstructions,
   holdInstance,
+  RoomControl,
   timeTools,
   turnHandling,
   type ProviderSet,
@@ -157,7 +159,8 @@ describe("tool timing and cold start logs", () => {
       () => (t += 150),
     );
     expect(await tools.lookup.execute(2)).toBe(4);
-    expect(lines[0]).toMatchObject({
+    expect(lines[0]).toMatchObject({ event: "tool_start", tool: "lookup" });
+    expect(lines[1]).toMatchObject({
       event: "tool_call",
       tool: "lookup",
       durationMs: 150,
@@ -175,7 +178,7 @@ describe("tool timing and cold start logs", () => {
     };
     timeTools(tools, undefined, (l) => lines.push(l));
     await expect(tools.boom.execute()).rejects.toThrow("x");
-    expect(lines[0]).toMatchObject({ tool: "boom", ok: false });
+    expect(lines[1]).toMatchObject({ tool: "boom", ok: false, err: "Error: x" });
   });
   it("cold start log says whether it was the first job", () => {
     const a = buildColdStartLog({ entryAt: 100, readyAt: 1600, uptimeSeconds: 12 });
@@ -208,5 +211,28 @@ describe("holdInstance", () => {
     expect(urls).toEqual(["https://w.run.app/hold"]);
     release();
     expect(abort?.aborted).toBe(true);
+  });
+});
+
+describe("restart safety", () => {
+  it("says a short apology, not the greeting, when resuming", () => {
+    const say = vi.fn();
+    const control = new RoomControl({ agentName: "Blah" });
+    control.bind({ say } as never);
+    control.announceResume();
+    expect(say).toHaveBeenCalledWith("Sorry, I lost you for a moment.");
+    expect(say).not.toHaveBeenCalledWith(expect.stringContaining("is here and listening"));
+  });
+  it("reads the resumed flag from the server answer", async () => {
+    const fetchFn = (async () =>
+      new Response(
+        JSON.stringify({ mode: "byok", tier: "paid", keys: {}, resumed: true }),
+      )) as never;
+    const keys = await fetchRoomKeys(
+      "rm_1",
+      { OPENBLAH_SERVER_URL: "http://s", OPENBLAH_AGENT_SECRET: "x" },
+      fetchFn,
+    );
+    expect(keys?.resumed).toBe(true);
   });
 });

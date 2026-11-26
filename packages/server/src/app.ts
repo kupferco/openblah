@@ -1363,6 +1363,7 @@ export function createApp(deps: AppDeps): Hono {
   const sendOut = async (room: Room, to: "off" | "ask" = "off"): Promise<Room> => {
     const next: Room = { ...room, agent: to, agentRequests: [] };
     delete next.agentAwaitingConsent;
+    delete next.agentStartedAt;
     await storage.updateRoom(next);
     await livekit.updateRoomMetadata(room.id, roomMetadataJson(next));
     await livekit.stopAgent(room.id).catch(() => undefined);
@@ -2062,7 +2063,22 @@ export function createApp(deps: AppDeps): Hono {
     if (!room) return c.json({ error: "room not found" }, 404);
     const r = await resolve(room);
     if (!r.ok) return c.json(refusalBody(r), refusalStatus[r.code]);
-    return c.json({ mode: r.mode, tier: r.tier, keys: r.keys });
+    // The agent asks once per job. If a session already started here and did not end on purpose,
+    // this job is a restart in the same conversation: it must not greet again.
+    const resumed = room.agentStartedAt !== undefined && room.agent === "on";
+    if (!resumed) await storage.updateRoom({ ...room, agentStartedAt: now().toISOString() });
+    return c.json({ mode: r.mode, tier: r.tier, keys: r.keys, resumed });
+  });
+  // The agent left on purpose (last human left, asked to leave): the next one starts fresh.
+  internal.post("/rooms/:id/agent-ended", async (c) => {
+    const room = await storage.getRoom(c.req.param("id"));
+    if (!room) return c.json({ error: "room not found" }, 404);
+    if (room.agentStartedAt) {
+      const next = { ...room };
+      delete next.agentStartedAt;
+      await storage.updateRoom(next);
+    }
+    return c.json({ ok: true });
   });
   // The agent was asked by voice to leave: the room goes to `off`, like the host's button.
   internal.post("/rooms/:id/agent-off", async (c) => {

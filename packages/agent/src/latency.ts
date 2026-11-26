@@ -110,6 +110,7 @@ export function timeTools<T extends Record<string, unknown>>(
   roomId?: string,
   log: (entry: object) => void = writeLog,
   clock: () => number = () => performance.now(),
+  sessionId?: string,
 ): T {
   for (const [name, tool] of Object.entries(tools)) {
     const t = tool as Executable;
@@ -118,15 +119,30 @@ export function timeTools<T extends Record<string, unknown>>(
     t.execute = (async (...args: never[]) => {
       const start = clock();
       let ok = true;
+      let failure: { err: string; stack?: string } | undefined;
+      // The start line is what shows a tool that never came back.
+      log({
+        event: "tool_start",
+        ...(roomId ? { roomId } : {}),
+        ...(sessionId ? { sessionId } : {}),
+        tool: name,
+        ts: new Date().toISOString(),
+      });
       try {
         return await original.apply(tool, args);
       } catch (err) {
         ok = false;
+        failure =
+          err instanceof Error
+            ? { err: `${err.name}: ${err.message}`, ...(err.stack ? { stack: err.stack } : {}) }
+            : { err: String(err) };
         throw err;
       } finally {
         log({
           event: "tool_call",
           ...(roomId ? { roomId } : {}),
+          ...(sessionId ? { sessionId } : {}),
+          ...failure,
           tool: name,
           durationMs: Math.round(clock() - start),
           ok,

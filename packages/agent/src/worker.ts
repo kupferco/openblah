@@ -23,6 +23,7 @@ import {
   fetchMcpToken,
   fetchRoomKeys,
   lastHumanLeft,
+  reportAgentEnded,
   reportAgentOff,
   reportUsageLog,
   UsageCollector,
@@ -34,6 +35,13 @@ import {
   type ActionLogEntry,
   type McpRoom,
 } from "./mcp/index.js";
+import {
+  attachSessionLogging,
+  logProcessFaults,
+  logStreams,
+  watchEventLoop,
+  type LogKey,
+} from "./session-log.js";
 import { languageFromMetadata, SETTINGS_INSTRUCTIONS, settingsTools } from "./settings.js";
 import { parseRoomProviders, providersFromLevels, withRoomKeys } from "./providers/index.js";
 import {
@@ -63,6 +71,39 @@ export default defineAgent({
     const models = ctx.proc.userData.models as Models;
     await ctx.connect();
     const roomKeys = await fetchRoomKeys(ctx.room.name ?? "");
+    // Every line from here on carries the room and this job's id, so a restart (a new job in the
+    // same room) is visible as a new sessionId.
+    const logKey: LogKey = { roomId: ctx.room.name, sessionId: ctx.job.id };
+    const resumed = roomKeys?.resumed === true;
+    const stopFaults = logProcessFaults(logKey);
+    const stopLoopWatch = watchEventLoop(logKey);
+    writeLog({
+      event: "job_start",
+      ...logKey,
+      resumed,
+      participants: ctx.room.remoteParticipants.size,
+      ts: new Date().toISOString(),
+    });
+    // LiveKit does not pass the reason to shutdown callbacks: note it where we cause the exit, and
+    // from the session's close event. "unknown" means the job was killed from outside (a stalled
+    // job LiveKit gave up on, SIGTERM, the instance going away); `job_signal` and
+    // `event_loop_stall` lines just before say which.
+    let exitReason = "unknown";
+    const exit = (reason: string) => {
+      exitReason = reason;
+      ctx.shutdown(reason);
+    };
+    ctx.addShutdownCallback(async () => {
+      writeLog({
+        event: "job_exit",
+        ...logKey,
+        reason: exitReason,
+        uptimeMs: Math.round(performance.now() - entryAt),
+        ts: new Date().toISOString(),
+      });
+      stopLoopWatch();
+      stopFaults();
+    });
     // The server resolves room > user/product > server default and puts the result in the job metadata,
     // so `room` here is that result; the worker's own environment is only the last fallback.
     const providers = providersFromLevels(
@@ -148,6 +189,9 @@ export default defineAgent({
             : {}),
         },
         ctx.room.name,
+        undefined,
+        undefined,
+        ctx.job.id,
       ),
       settings ? SETTINGS_INSTRUCTIONS : undefined,
     );
@@ -160,6 +204,11 @@ export default defineAgent({
       if (ev.isFinal) live.userTurns += 1;
     });
     attachLatencyLogging(session, directAgent, ctx.room.name);
+    attachSessionLogging(session, logKey);
+    session.on(voice.AgentSessionEventTypes.Close, (ev) => {
+      if (exitReason === "unknown") exitReason = `session closed: ${String(ev.reason)}`;
+    });
+    logStreams(session, logKey);
     await session.start({ agent: directAgent, room: ctx.room });
     if (roomKeys) {
       // The server keeps the usage log and enforces the caps (room length, idle, monthly
@@ -194,7 +243,7 @@ export default defineAgent({
     // Keep Cloud Run from scaling this instance down while the call is running.
     const release = holdInstance({ url: process.env.WORKER_SELF_URL, roomId: ctx.room.name });
     ctx.addShutdownCallback(async () => release());
-    writeLog({ event: "agent_joined", roomId: ctx.room.name });
+    writeLog({ event: "agent_joined", ...logKey, resumed });
     writeLog(buildColdStartLog({ roomId: ctx.room.name, entryAt, readyAt: performance.now() }));
 
     const local = ctx.room.localParticipant;
@@ -218,7 +267,7 @@ export default defineAgent({
       leave: () => {
         void (async () => {
           await lastSpeech?.waitForPlayout().catch(() => undefined);
-          ctx.shutdown("asked to leave");
+          exit("asked to leave");
         })();
       },
     });
@@ -233,8 +282,10 @@ export default defineAgent({
         isAgent: p.kind === ParticipantKind.AGENT,
       }));
       if (lastHumanLeft(others)) {
-        writeLog({ event: "agent_left", roomId: ctx.room.name, reason: "last human left" });
-        ctx.shutdown("last human left");
+        writeLog({ event: "agent_left", ...logKey, reason: "last human left" });
+        // On purpose: the next agent in this room starts fresh, with its greeting.
+        void reportAgentEnded(ctx.room.name ?? "");
+        exit("last human left");
       }
     });
     ctx.room.on(RoomEvent.ParticipantConnected, (p) => {
@@ -245,7 +296,9 @@ export default defineAgent({
         isAgent: p.kind === ParticipantKind.AGENT,
       });
     });
-    control.announceEntry();
+    // A restart in a conversation that was already going must not greet again.
+    if (resumed) control.announceResume();
+    else control.announceEntry();
   },
 });
 

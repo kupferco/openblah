@@ -39,6 +39,11 @@ export interface Room {
    * time does not count: everyone is asked again (late consent, T18).
    */
   agentConsentSince?: string;
+  /**
+   * Set when an agent session first starts in this room, cleared when the agent is sent out or
+   * leaves on purpose. A new agent job that finds it set is a restart in the same conversation.
+   */
+  agentStartedAt?: string;
   /** The agent is on but not dispatched yet: waiting for everyone's consent. */
   agentAwaitingConsent?: boolean;
   /** Pending "please bring the agent in" requests from non-hosts, for the host to approve. */

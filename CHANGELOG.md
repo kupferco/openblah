@@ -2,6 +2,12 @@
 
 All notable changes to the published packages (`@openblah/core`, `@openblah/web`, `@openblah/react-native`, `@openblah/server`). The SDK packages share one version. OpenBlah is **0.x: the API may change in any minor release.**
 
+## Unreleased
+
+`@openblah/server` 0.1.2. SDK packages are unchanged (0.2.2).
+
+- `@openblah/server`: the agent's key lookup now says when a job is a restart in a conversation that already began (`resumed`), and `POST /internal/rooms/:id/agent-ended` clears it when the agent leaves on purpose. The agent (Docker image, not on npm) uses it to skip the greeting after a restart and says "Sorry, I lost you for a moment." instead. The agent also logs `job_start`, `job_exit`, turn, tool, stream, error, signal and event-loop-stall lines keyed by room and session.
+
 ## 0.2.2
 
 SDK packages (`core`, `web`, `react-native`) 0.2.2. `@openblah/server` is unchanged (0.1.1).
