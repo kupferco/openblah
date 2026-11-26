@@ -6,6 +6,11 @@ export interface RoomKeys {
   mode: "product" | "byok" | "trial";
   tier: "free" | "paid";
   keys: RoomVendorKeys;
+  /**
+   * True when this job is a restart in a room whose conversation already began (the server saw an
+   * earlier agent session that did not end on purpose). The agent must not greet again.
+   */
+  resumed?: boolean;
 }
 
 /**
@@ -72,6 +77,26 @@ export async function reportAgentOff(
   try {
     const res = await fetchFn(
       `${base.replace(/\/$/, "")}/internal/rooms/${encodeURIComponent(roomId)}/agent-off`,
+      { method: "POST", headers: { Authorization: `Bearer ${secret}` } },
+    );
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** Tell the server the agent left on purpose, so the next agent in this room greets normally. */
+export async function reportAgentEnded(
+  roomId: string,
+  env: Env = process.env,
+  fetchFn: typeof fetch = fetch,
+): Promise<boolean> {
+  const base = env.OPENBLAH_SERVER_URL;
+  const secret = env.OPENBLAH_AGENT_SECRET;
+  if (!base || !secret) return false;
+  try {
+    const res = await fetchFn(
+      `${base.replace(/\/$/, "")}/internal/rooms/${encodeURIComponent(roomId)}/agent-ended`,
       { method: "POST", headers: { Authorization: `Bearer ${secret}` } },
     );
     return res.ok;

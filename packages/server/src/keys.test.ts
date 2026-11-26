@@ -152,6 +152,23 @@ describe("key never leaves the server", () => {
     expect(await ok.json()).toMatchObject({ mode: "byok", keys: { gemini: SECRET_VALUE } });
   });
 
+  it("tells a restarted agent job it is resuming, until the agent ends on purpose", async () => {
+    const { call, room, saveAll, storage } = setup();
+    await saveAll("u1", "paid", true);
+    const id = await room("u1");
+    await storage.updateRoom({ ...(await storage.getRoom(id))!, agent: "on" });
+    const ask = async () =>
+      (await (await call("POST", `/internal/rooms/${id}/provider-keys`, {}, AGENT)).json()) as {
+        resumed: boolean;
+      };
+    expect((await ask()).resumed).toBe(false);
+    // Same conversation, a second job (the first was killed): resume, don't greet.
+    expect((await ask()).resumed).toBe(true);
+    // The agent left on purpose: the next one starts fresh.
+    expect((await call("POST", `/internal/rooms/${id}/agent-ended`, {}, AGENT)).status).toBe(200);
+    expect((await ask()).resumed).toBe(false);
+  });
+
   it("delete removes the key", async () => {
     const { call, saveAll, storage } = setup();
     await saveAll("u1", "paid");
