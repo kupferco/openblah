@@ -696,23 +696,26 @@ jobs:
         if: steps.claude.outcome == 'success'
         continue-on-error: true
         run: |
+          mkdir -p "$RUNNER_TEMP"
+          cat > "$RUNNER_TEMP/openpocket-sync.sh" <<'OPSYNC'
+          #!/usr/bin/env bash
           git config user.name  >/dev/null || git config user.name  "OpenPocket"
           git config user.email >/dev/null || git config user.email "openpocket@users.noreply.github.com"
           out() { echo "status=$1" >> "$GITHUB_OUTPUT"; echo "note=$2" >> "$GITHUB_OUTPUT"; echo "risky=${3:-false}" >> "$GITHUB_OUTPUT"; echo "files=${4:-}" >> "$GITHUB_OUTPUT"; echo "$2"; }
           if [ -n "$(git status --porcelain)" ]; then
             git add -A
-            git commit -m "OpenPocket #${{ inputs.task_id }}: uncommitted work"
+            git commit -m "OpenPocket #$TASK_ID: uncommitted work"
           fi
           # Nothing to offer when the session changed nothing since the merge of main (post-merge mark; a merge-only run is already current).
-          [ "$(git rev-parse HEAD)" != "${{ steps.merge.outputs.start }}" ] || exit 0
+          [ "$(git rev-parse HEAD)" != "$MERGE_START" ] || exit 0
           git fetch origin "$BASE" || exit 0
           if git merge-base --is-ancestor "origin/$BASE" HEAD; then out current "Up to date with $BASE"; exit 0; fi
           PRE="$(git rev-parse HEAD)"
-          MSG="OpenPocket #${{ inputs.task_id }}: merge $BASE into $BRANCH"
+          MSG="OpenPocket #$TASK_ID: merge $BASE into $BRANCH"
           if git merge --no-edit -m "$MSG" "origin/$BASE"; then out synced "Synced with $BASE, no conflicts"; exit 0; fi
           git merge --abort 2>/dev/null || true
           if git merge --no-edit -Xignore-space-change -m "$MSG" "origin/$BASE"; then out synced "Synced with $BASE, ignoring whitespace differences"; exit 0; fi
-          R="$RUNNER_TEMP/openpocket-resolver.mjs"
+          R="$OP_TEMP/openpocket-resolver.mjs"
           cat > "$R" <<'RESOLVER'
           
           import { execFileSync } from 'node:child_process';
@@ -839,10 +842,10 @@ jobs:
           # Real logic conflicts go to a small AI session, once per run, at most 2 rounds in total
           # (earlier resolutions on this branch count), never with risky files in the mix.
           ROUNDS="$(git log --format=%s "$PRE" | grep -c "resolve conflicts with $BASE" || true)"
-          if [ "$RISKY" = false ] && [ "$ROUNDS" -lt 2 ] && [ "${{ inputs.ai_resolve }}" != "false" ]; then
+          if [ "$RISKY" = false ] && [ "$ROUNDS" -lt 2 ] && [ "$AI_RESOLVE" != "false" ]; then
             LIST="$(echo "$FILES" | tr -d ',')"
             snap() { { git status --porcelain -uall | grep -v '^UU\|^AA\|^DU\|^UD\|^AU\|^UA\|^DD' | awk '{print $2}' | grep -vxF -f <(printf '%s\n' $LIST) | while read -r P; do [ -f "$P" ] && printf '%s %s\n' "$(git hash-object "$P")" "$P"; done; } | sort; }
-            snap > "$RUNNER_TEMP/openpocket-snap.txt"
+            snap > "$OP_TEMP/openpocket-snap.txt"
             echo "pre=$PRE" >> "$GITHUB_OUTPUT"
             echo "msg=$MSG" >> "$GITHUB_OUTPUT"
             echo "round=$((ROUNDS + 1))" >> "$GITHUB_OUTPUT"
@@ -851,6 +854,9 @@ jobs:
           fi
           git merge --abort 2>/dev/null || git reset --hard "$PRE"
           out failed "Could not sync with $BASE: $FILES conflict and need a person or a coding session" "$RISKY" "$FILES"
+          
+          OPSYNC
+          TASK_ID="${{ inputs.task_id }}" MERGE_START="${{ steps.merge.outputs.start }}" AI_RESOLVE="${{ inputs.ai_resolve }}" OP_TEMP="$RUNNER_TEMP" bash "$RUNNER_TEMP/openpocket-sync.sh"
 
       # Part 3 of the conflict strategy: a small session that sees only the conflicted files.
       # The merge is still open; the next step checks the result and drops it if anything is off.
@@ -954,6 +960,7 @@ jobs:
 
       - name: Tell OpenPocket
         if: always()
+        timeout-minutes: 10
         env:
           OPENPOCKET_URL: ${{ secrets.OPENPOCKET_URL || secrets.VIBER_URL }}
           OPENPOCKET_HOOK_SECRET: ${{ secrets.OPENPOCKET_HOOK_SECRET || secrets.VIBER_HOOK_SECRET }}
@@ -1014,6 +1021,8 @@ jobs:
             --arg syncStatus "${AI_STATUS:-$SYNC_STATUS}" --arg syncNote "${AI_NOTE:-$SYNC_NOTE}" --arg syncRisky "$SYNC_RISKY" --arg syncFiles "$SYNC_FILES" \
             --arg aiHunks "$AI_HUNKS" --arg aiTokens "${AI_TOKENS:-0}" --arg aiRound "${AI_ROUND:-0}" --arg aiUsed "$([ -n "$AI_STATUS" ] && echo true || echo false)" \
             '{usage:$usage, aiResolved:($aiUsed=="true"), aiHunks:$aiHunks, aiTokens:($aiTokens|tonumber? // 0), aiRound:($aiRound|tonumber? // 0), syncStatus:$syncStatus, syncNote:$syncNote, syncRisky:($syncRisky=="true"), syncFiles:($syncFiles | split(", ") | map(select(. != "")))} + {repo:$repo, branch:$branch, taskId:($task|tonumber), outcome:$outcome, pushed:($pushed=="true"), pushError:$pushError, runUrl:$run, summary:$summary, finalAnswer:$final}' \
-          | curl -fsS -X POST "$OPENPOCKET_URL/hooks/run" \
+          > "$RUNNER_TEMP/openpocket-report.json"
+          # The server finishes its work before it replies, so allow it time; retry a few times if it is waking up or busy.
+          curl -fsS --max-time 120 --retry 3 --retry-delay 5 --retry-all-errors -X POST "$OPENPOCKET_URL/hooks/run" \
               -H "Authorization: Bearer $OPENPOCKET_HOOK_SECRET" \
-              -H "Content-Type: application/json" --data-binary @-
+              -H "Content-Type: application/json" --data-binary @"$RUNNER_TEMP/openpocket-report.json"
